@@ -18,12 +18,28 @@ import logging
 logging.basicConfig(level=logging.INFO, format='%(asctime)s - %(levelname)s - %(message)s')
 
 class FullHashTable:
+    """
+    A class to represent a hash table for storing k-mer information with associated sample IDs.
+    """
+
     def __init__(self, size):
+        """
+        Initialize the hash table with a given size.
+
+        Parameters:
+        size (int): The size of the hash table.
+        """
         self.size = size
         self.table = np.full(size, None, dtype=object)  # Store (key, tax_id_set) tuples
 
     def insert(self, key, tax_id):
-        """Insert a key-value pair using full hash storage."""
+        """
+        Insert a key-value pair into the hash table.
+
+        Parameters:
+        key (str): The k-mer to be inserted.
+        tax_id (str): The sample ID associated with the k-mer.
+        """
         full_hash = mmh3.hash(key, signed=False)  # Compute full 32-bit MurmurHash3
         index = full_hash % self.size  # Compute index using modulo operation
 
@@ -39,7 +55,15 @@ class FullHashTable:
         self.table[index] = (key, {tax_id})  
 
     def search(self, key):
-        """Search for a key and return the associated taxonomic IDs."""
+        """
+        Search for a key in the hash table and return the associated sample IDs.
+
+        Parameters:
+        key (str): The k-mer to search for.
+
+        Returns:
+        set: A set of sample IDs associated with the k-mer, or None if the key is not found.
+        """
         full_hash = mmh3.hash(key, signed=False)
         index = full_hash % self.size
 
@@ -52,7 +76,12 @@ class FullHashTable:
         return None  # Key not found
 
     def resize(self, new_size):
-        """Resize the hash table and rehash all elements."""
+        """
+        Resize the hash table and rehash all elements.
+
+        Parameters:
+        new_size (int): The new size of the hash table.
+        """
         temp_hash_table = FullHashTable(new_size)  # Create a new hash table
         for entry in self.table:
             if entry is not None:
@@ -64,21 +93,38 @@ class FullHashTable:
         self.table = temp_hash_table.table
 
     def count_filled(self):
-        """Count the number of filled and empty slots in the hash table."""
+        """
+        Count the number of filled and empty slots in the hash table.
+
+        Returns:
+        tuple: A tuple containing the number of filled slots and empty slots.
+        """
         filled = sum(1 for entry in self.table if entry is not None)
         empty = self.size - filled
-        #print(f"Slots filled: {filled}, empty slots: {empty}")
         return filled, empty
 
     def save_table(self, filename):
-        """Save the hash table to a file using pickle."""
+        """
+        Save the hash table to a file using pickle.
+
+        Parameters:
+        filename (str): The name of the file to save the hash table to.
+        """
         with open(filename, "wb") as f:
             pickle.dump((self.size, self.table), f)
         print(f"Hash table saved to {filename}")
 
     @staticmethod
     def load_table(filename):
-        """Load a hash table from a file."""
+        """
+        Load a hash table from a file.
+
+        Parameters:
+        filename (str): The name of the file to load the hash table from.
+
+        Returns:
+        FullHashTable: The loaded hash table.
+        """
         with open(filename, "rb") as f:
             size, table = pickle.load(f)
         new_ht = FullHashTable(size)
@@ -87,7 +133,12 @@ class FullHashTable:
         return new_ht
 
     def get_tax_id_counts(self):
-        """Count occurrences of each taxonomic ID in the hash table."""
+        """
+        Count occurrences of each sample ID in the hash table.
+
+        Returns:
+        dict: A dictionary with sample IDs as keys and their counts as values.
+        """
         tax_id_counts = {}
         for entry in self.table:
             if entry is not None:
@@ -97,14 +148,35 @@ class FullHashTable:
         return tax_id_counts
 
     def get_tax_id_counts_df(self):
-        """Return a DataFrame with tax_id and their respective counts."""
+        """
+        Return a DataFrame with sample IDs and their respective counts.
+
+        Returns:
+        pandas.DataFrame: A DataFrame with columns "tax_id" and "counts".
+        """
         tax_id_counts = self.get_tax_id_counts()
         return pd.DataFrame(list(tax_id_counts.items()), columns=["tax_id", "counts"])
+
     def display_table(self):
+        """
+        Display the contents of the hash table.
+        """
         print(self.table)
         
 # Produce a list of k-mer sets for each sequence in the input list
 def produce_kmers(seq_list, k_mer=25):
+    """
+    Generate k-mers for each sequence in the provided list.
+
+    Args:
+        seq_list (list of str): List of sequences to process.
+        k_mer (int, optional): Length of the k-mers to generate. Default is 25.
+
+    Returns:
+        tuple: A tuple containing:
+            - list of set: A list where each element is a set of k-mers for the corresponding sequence.
+            - int: The total number of sequences processed.
+    """
     k_mer_sets = []  # List to hold sets of k-mers for each sequence
     # Iterate over each sequence in the list
     for seq in seq_list:
@@ -117,6 +189,21 @@ def produce_kmers(seq_list, k_mer=25):
     return k_mer_sets, len(k_mer_sets)
 
 def iterate_over_samples(samples_dir, hash_table):
+    """
+    Iterates over all sample files in the given directory, processes each file to extract k-mers,
+    and inserts them into the provided hash table. Resizes the hash table if the load factor exceeds 0.65.
+
+    Args:
+        samples_dir (str): The directory containing sample files in FASTA format.
+        hash_table (HashTable): The hash table to insert k-mers into.
+
+    Returns:
+        HashTable: The updated hash table with k-mers from all processed samples.
+
+    Raises:
+        OSError: If there is an issue reading files from the samples directory.
+        ValueError: If there is an issue with the format of the sample files.
+    """
     for filename in os.listdir(samples_dir):
         if filename.endswith(".fasta") or filename.endswith(".fa"):
             filepath = os.path.join(samples_dir, filename)
@@ -150,6 +237,22 @@ def iterate_over_samples(samples_dir, hash_table):
     return hash_table
 #create a function to clean the threshold dict to reduce to just the most simliar sample pairs, i.e only keep the best haplotype pair 
 def clean_threshold_dict(threshold_dict):
+    """
+    Cleans and processes a dictionary of threshold values.
+
+    This function takes a dictionary where the keys are tuples of sample names
+    and the values are threshold values. It cleans the sample names to use only
+    the base name (before the first underscore), ensures the key order is consistent,
+    and stores only the highest value for each sample pair.
+
+    Args:
+        threshold_dict (dict): A dictionary with keys as tuples of sample names
+                               and values as threshold values.
+
+    Returns:
+        dict: A cleaned dictionary with consistent key order and highest threshold
+              values for each sample pair.
+    """
     #initialize a new dictionary to store out values 
     temp_dict = {}
     for keys,value in threshold_dict.items():
@@ -163,8 +266,25 @@ def clean_threshold_dict(threshold_dict):
         # Store only the highest value for each sample pair
         if new_key not in temp_dict or temp_dict[new_key] < value:
             temp_dict[new_key] = value
-    return temp_dict
-def get_simliarity_values(sample_search_results,sample_kmer_counts,hash_table,threshold=50):
+    return temp_dict 
+
+def get_simliarity_values(sample_search_results, sample_kmer_counts, hash_table, threshold=50):
+    """
+    Calculate the similarity values between samples based on k-mer counts and a given threshold.
+
+    Args:
+        sample_search_results (dict): A dictionary where keys are primary sample IDs and values are dictionaries 
+                                          of hit sample IDs and their respective k-mer hit counts.
+        sample_kmer_counts (dict): A dictionary where keys are sample IDs and values are their respective total k-mer counts.
+        hash_table (object): An object that contains the method get_tax_id_counts() which returns a dictionary of sample IDs 
+                                 and their respective total k-mer counts.
+        threshold (int, optional): The minimum percentage similarity required to include the sample pair in the result. 
+                                       Defaults to 50.
+
+    Returns:
+        dict: A dictionary where keys are tuples of (primary_sample, hit_sample) and values are the percentage similarity 
+                  between the primary sample and the hit sample, only including pairs that meet or exceed the threshold.
+    """
     id_counts = hash_table.get_tax_id_counts()
     #create a new threshold dictionary to store samples who meet the threshold 
     threshold_dict = {}  
@@ -184,6 +304,22 @@ def get_simliarity_values(sample_search_results,sample_kmer_counts,hash_table,th
                 threshold_dict[(primary_sample, hit_sample)] = percent_simliarity
     return threshold_dict
 def compare_samples(hash_table,samples_dir_to_compare):
+    """
+    Compare samples in a given directory against a hash table of kmers.
+    Args:
+        hash_table (object): An object that supports a `search` method for kmers.
+        samples_dir_to_compare (str): Path to the directory containing sample fasta files.
+    Returns:
+        tuple: A tuple containing two dictionaries:
+            - sample_search_results (dict): A dictionary where keys are sample names and values are dictionaries 
+                of other samples and their respective kmer counts.
+            - sample_kmer_counts (dict): A dictionary where keys are sample names and values are the counts of kmers 
+                for each haplotype in the sample.
+    Notes:
+        - Only fasta files (with extensions .fasta or .fa) in the samples directory are processed.
+        - The sample name is constructed from the fasta file name and haplotype number.
+        - The function does not store search results for the current sample if it is found in the hash table.
+        """
     #create dictionary to store what toher samples each kmer belonged too for each haplotype
     sample_search_results = {}
     #create a dictionary to store the kmer coutns for each haplotype for each sample
@@ -234,6 +370,18 @@ def compare_samples(hash_table,samples_dir_to_compare):
     return sample_search_results, sample_kmer_counts
 #function to run the hash table initialization and key insertion
 def update_table(previous_hash_table, samples_dir_to_add, new_hash_table_name, save_table):
+    """
+    Updates an existing hash table with new samples and optionally saves the updated table.
+
+    Args:
+        previous_hash_table (str): Path to the file containing the previous hash table.
+        samples_dir_to_add (str): Directory containing new samples to add to the hash table.
+        new_hash_table_name (str): Name for the new hash table file to be saved.
+        save_table (bool): Flag indicating whether to save the updated hash table to a file.
+
+    Returns:
+        FullHashTable: The updated hash table object.
+    """
     # Load the previous hash table
     hash_table = FullHashTable.load_table(previous_hash_table)
     print(f"Size of loaded table: {hash_table.size}")
@@ -244,6 +392,18 @@ def update_table(previous_hash_table, samples_dir_to_add, new_hash_table_name, s
         hash_table.save_table(f"{new_hash_table_name}.pkl")
     return hash_table
 def create_new_table(table_size, samples_dir, new_hash_table_name, save_table):
+    """
+    Create a new hash table, populate it with data from samples, and optionally save it to a file.
+
+    Args:
+        table_size (int): The size of the hash table to be created.
+        samples_dir (str): The directory containing sample data to be hashed.
+        new_hash_table_name (str): The name to be used when saving the hash table.
+        save_table (bool): A flag indicating whether to save the hash table to a file.
+
+    Returns:
+        FullHashTable: The populated hash table.
+    """
     #create a new hash table
     hash_table = FullHashTable(table_size)
     #iterate over the samples in the directory
