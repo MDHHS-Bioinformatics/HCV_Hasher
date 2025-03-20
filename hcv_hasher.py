@@ -104,7 +104,7 @@ class FullHashTable:
         print(self.table)
         
 # Produce a list of k-mer sets for each sequence in the input list
-def produce_kmers(seq_list, k_mer=26):
+def produce_kmers(seq_list, k_mer=25):
     k_mer_sets = []  # List to hold sets of k-mers for each sequence
     # Iterate over each sequence in the list
     for seq in seq_list:
@@ -146,14 +146,96 @@ def iterate_over_samples(samples_dir, hash_table):
                 hash_table.resize(hash_table.size * 2)
                 print(f"Table resized to {hash_table.size}")
     print("\nAll samples processed and added to hash table")
-    return hash_table   
-def compare_samples(samples_dir_to_compare, hash_table):
-    pass
+    return hash_table
+#create a function to clean the threshold dict to reduce to just the most simliar sample pairs, i.e only keep the best haplotype pair 
+def clean_threshold_dict(threshold_dict):
+    #initialize a new dictionary to store out values 
+    temp_dict = {}
+    for keys,value in threshold_dict.items():
+        #extract the two sample values 
+        sample_1, sample_2 = keys
+        #clean the sample names to just use the base name
+        sample_1 = sample_1.split('_')[0]
+        sample_2 = sample_2.split('_')[0]
+        # Ensure the key order is consistent
+        new_key = tuple(sorted((sample_1, sample_2)))
+        # Store only the highest value for each sample pair
+        if new_key not in temp_dict or temp_dict[new_key] < value:
+            temp_dict[new_key] = value
+    return temp_dict
+def get_simliarity_values(sample_search_results,sample_kmer_counts,hash_table,threshold=50):
+    id_counts = hash_table.get_tax_id_counts()
+    #create a new threshold dictionary to store samples who meet the threshold 
+    threshold_dict = {}  
+    for primary_sample, search_results in sample_search_results.items():
+        #get the kmer total for the primary sample
+        primary_sample_kmer_count = sample_kmer_counts[primary_sample]
+        #iterate over all the hits that we got in the hash table 
+        for hit_sample, hit_counts in search_results.items():
+            #get the total counts for sample hit from the hash table
+            hit_sample_kmer_count = id_counts[hit_sample]
+            #calculate the total unique kmer counts between our primary and hit sample 
+            total_unique_counts = (primary_sample_kmer_count + hit_sample_kmer_count) - hit_counts
+            #calculate the percent simliitariy 
+            percent_simliarity = (hit_counts / total_unique_counts) * 100
+            #if the percent simliarity is greater than the threshold, store it in a new dictionary
+            if percent_simliarity >= threshold:
+                threshold_dict[(primary_sample, hit_sample)] = percent_simliarity
+    return threshold_dict
+def compare_samples(hash_table,samples_dir_to_compare):
+    #create dictionary to store what toher samples each kmer belonged too for each haplotype
+    sample_search_results = {}
+    #create a dictionary to store the kmer coutns for each haplotype for each sample
+    sample_kmer_counts = {}
+    #iterate over the samples directory 
+    for fasta in os.listdir(samples_dir_to_compare):
+        #only process fasta files
+        if fasta.endswith(".fasta") or fasta.endswith(".fa"):
+            fasta_name = fasta.split('.')[0]
+            #get the genotype 
+            genotype = fasta_name.split('-')[-1]
+            fasta_path = os.path.join(samples_dir_to_compare, fasta)
+            seq_list = [str(record.seq) for record in SeqIO.parse(fasta_path, "fasta")]
+            #get the kmers for the sample
+            k_mer_sets, num_sequences = produce_kmers(seq_list)
+            #set the unique haplotype number
+            haplotype_number = 0
+            #now iterate through each set of kmers
+            for kmer_set in k_mer_sets:
+                #create a temp dictionary to store the search results
+                temp_dict = {}
+                kmer_count=0
+                #create the sample name 
+                sample_name = f"{fasta_name}_{haplotype_number}"
+                #search for each kmer in the hash table
+                for kmer in kmer_set:
+                    #increase the kmer count
+                    kmer_count+=1
+                    result_set = hash_table.search(kmer)
+                    #print(result_set)
+                    #iterate through each sampe name in the results set 
+                    if result_set is not None:
+                        #do NOT store the results for the current sample if its in the hash table
+                        for result in result_set:
+                            if fasta_name not in result:
+                                if result in temp_dict:
+                                    temp_dict[result] += 1
+                                else:
+                                    temp_dict[result] = 1
+                #update the respective dictionaries
+                sample_kmer_counts[sample_name] = kmer_count
+                #store the search results in the dictionary
+                sample_search_results[sample_name] = temp_dict
+                #increment the haplotype number     
+                haplotype_number+=1
+                    
+    #return the dictionaries
+    return sample_search_results, sample_kmer_counts
 #function to run the hash table initialization and key insertion
 def update_table(previous_hash_table, samples_dir_to_add, hash_table_name, save_table):
     # Load the previous hash table
     hash_table = FullHashTable.load_table(previous_hash_table)
-    print(f"Size of loaded table{hash_table.size}")
+    print(f"Size of loaded table: {hash_table.size}")
     # Iterate over the samples in the directory
     hash_table = iterate_over_samples(samples_dir_to_add, hash_table)
     # Save the hash table to a file
@@ -179,8 +261,9 @@ def main(argv=None):
     parser.add_argument('--samples_dir_to_compare', type=str, help='Directory of samples to compare to the hash table')
     parser.add_argument('--previous_hash_table', type=str, help="Path to a previous hash table to load in and use")
     parser.add_argument('--hash_table_name', type=str, default='hcv_hash_table', help='Name of the final outputted Hash table. If a hash table is being updated, the updated table will be saved to the new name')
-    parser.add_argument('--kmer_size', type=int, default=26, help='Size of the k-mer to be used in the analysis')
+    parser.add_argument('--kmer_size', type=int, default=25, help='Size of the k-mer to be used in the analysis')
     parser.add_argument('--save_table', action='store_true', help='Save the hash table after creation')
+    parser.add_argument('--results_file', type=str, default='results.csv', help='Name of the outputted results file')
     args = parser.parse_args(argv)
     
     hash_table = None
@@ -189,6 +272,7 @@ def main(argv=None):
         if args.samples_dir_to_add is None:
             logging.error("If --mode is 'new', --samples_dir (path) must be provided.")
             exit(1)
+        print("New mode selected: a new hash table will be create from scratch\n")
         hash_table = create_new_table(args.table_size, args.samples_dir_to_add, args.hash_table_name, args.save_table)
     elif args.mode == 'update':
         if args.samples_dir_to_add is None:
@@ -197,16 +281,30 @@ def main(argv=None):
         if args.previous_hash_table is None:
             logging.error("If --mode is 'update', --previous_hash_table (path) must be provided.")
             exit(1)
+        print("Update mode selected: a previous hash table will be loaded and updated with new samples\n")
         hash_table = update_table(args.previous_hash_table, args.samples_dir_to_add, args.hash_table_name, args.save_table)
     elif args.mode == 'load':
         if args.previous_hash_table is None:
             logging.error("If --mode is 'load', --previous_hash_table (path) must be provided.")
             exit(1)
+        print("Load mode selected: a previous hash table will be loaded\n")
         hash_table = FullHashTable.load_table(args.previous_hash_table)
     
-    # if args.samples_dir is not None and args.mode != 'load':
-    #     compare_samples(args.samples_dir, hash_table)
-    
+    #if samples_dir_to_compare is provided, compare the samples 
+    if args.samples_dir_to_compare is not None:
+        #print(hash_table.display_table())
+        sample_search_results, sample_kmer_counts = compare_samples(hash_table, args.samples_dir_to_compare)
+        #get the simliarity values
+        threshold_dict = get_simliarity_values(sample_search_results,sample_kmer_counts,hash_table)
+        #clean the threshold dict
+        threshold_dict = clean_threshold_dict(threshold_dict)
+        #print the threshold dictionary 
+        results_df = pd.DataFrame(
+            [(primary_sample, hit_sample, percent_similarity) for (primary_sample, hit_sample), percent_similarity in threshold_dict.items()],
+            columns=["sample_1", "sample_2", "percent_similarity"]
+        )
+        results_df.to_csv(args.results_file, index=False)
+        print("Similarity values saved to results.csv")
     logging.info('Code finished running')
 #write main function to test the class
 if __name__ == "__main__":
