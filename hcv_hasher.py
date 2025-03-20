@@ -120,8 +120,9 @@ def iterate_over_samples(samples_dir, hash_table):
     for filename in os.listdir(samples_dir):
         if filename.endswith(".fasta") or filename.endswith(".fa"):
             filepath = os.path.join(samples_dir, filename)
+            fasta_name = filename.split('.')[0]
             seq_list = [str(record.seq) for record in SeqIO.parse(filepath, "fasta")]
-            print(f"Processing {filename} with {len(seq_list)} sequences.")
+            print(f"Processing {fasta_name} with {len(seq_list)} sequences.")
             #produce the kmer sets
             k_mer_sets, num_sequences = produce_kmers(seq_list)
             #set the unique haplotype number
@@ -129,7 +130,7 @@ def iterate_over_samples(samples_dir, hash_table):
             #now iterate through each set of kmers
             for kmer_set in k_mer_sets:
                 #create the sample name 
-                sample_name = f"{filename}_{haplotype_number}"
+                sample_name = f"{fasta_name}_{haplotype_number}"
                 #add each kmer to the hash table
                 for kmer in kmer_set:
                     hash_table.insert(kmer, sample_name)
@@ -232,7 +233,7 @@ def compare_samples(hash_table,samples_dir_to_compare):
     #return the dictionaries
     return sample_search_results, sample_kmer_counts
 #function to run the hash table initialization and key insertion
-def update_table(previous_hash_table, samples_dir_to_add, hash_table_name, save_table):
+def update_table(previous_hash_table, samples_dir_to_add, new_hash_table_name, save_table):
     # Load the previous hash table
     hash_table = FullHashTable.load_table(previous_hash_table)
     print(f"Size of loaded table: {hash_table.size}")
@@ -240,16 +241,16 @@ def update_table(previous_hash_table, samples_dir_to_add, hash_table_name, save_
     hash_table = iterate_over_samples(samples_dir_to_add, hash_table)
     # Save the hash table to a file
     if save_table:
-        hash_table.save_table(f"{hash_table_name}.pkl")
+        hash_table.save_table(f"{new_hash_table_name}.pkl")
     return hash_table
-def create_new_table(table_size, samples_dir, table_name,save_table):
+def create_new_table(table_size, samples_dir, new_hash_table_name, save_table):
     #create a new hash table
     hash_table = FullHashTable(table_size)
     #iterate over the samples in the directory
     hash_table = iterate_over_samples(samples_dir, hash_table)
     #save the hashtable to a file
     if save_table:
-        hash_table.save_table(f"{table_name}.pkl")
+        hash_table.save_table(f"{new_hash_table_name}.pkl")
     return hash_table
 def main(argv=None):
     logging.info('Starting code\n')
@@ -260,7 +261,7 @@ def main(argv=None):
     parser.add_argument('--samples_dir_to_add', type=str, help='Directory of samples to add to the hash table')
     parser.add_argument('--samples_dir_to_compare', type=str, help='Directory of samples to compare to the hash table')
     parser.add_argument('--previous_hash_table', type=str, help="Path to a previous hash table to load in and use")
-    parser.add_argument('--hash_table_name', type=str, default='hcv_hash_table', help='Name of the final outputted Hash table. If a hash table is being updated, the updated table will be saved to the new name')
+    parser.add_argument('--new_hash_table_name', type=str, default='hcv_hash_table', help='Name of the final outputted Hash table. If a hash table is being updated, the updated table will be saved to the new name')
     parser.add_argument('--kmer_size', type=int, default=25, help='Size of the k-mer to be used in the analysis')
     parser.add_argument('--save_table', action='store_true', help='Save the hash table after creation')
     parser.add_argument('--results_file', type=str, default='results.csv', help='Name of the outputted results file')
@@ -273,7 +274,7 @@ def main(argv=None):
             logging.error("If --mode is 'new', --samples_dir (path) must be provided.")
             exit(1)
         print("New mode selected: a new hash table will be create from scratch\n")
-        hash_table = create_new_table(args.table_size, args.samples_dir_to_add, args.hash_table_name, args.save_table)
+        hash_table = create_new_table(args.table_size, args.samples_dir_to_add, args.new_hash_table_name, args.save_table)
     elif args.mode == 'update':
         if args.samples_dir_to_add is None:
             logging.error("If --mode is 'update', --samples_dir (path) must be provided.")
@@ -282,7 +283,7 @@ def main(argv=None):
             logging.error("If --mode is 'update', --previous_hash_table (path) must be provided.")
             exit(1)
         print("Update mode selected: a previous hash table will be loaded and updated with new samples\n")
-        hash_table = update_table(args.previous_hash_table, args.samples_dir_to_add, args.hash_table_name, args.save_table)
+        hash_table = update_table(args.previous_hash_table, args.samples_dir_to_add, args.new_hash_table_name, args.save_table)
     elif args.mode == 'load':
         if args.previous_hash_table is None:
             logging.error("If --mode is 'load', --previous_hash_table (path) must be provided.")
