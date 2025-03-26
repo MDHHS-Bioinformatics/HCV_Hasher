@@ -188,7 +188,7 @@ def produce_kmers(seq_list, k_mer=25):
     #return the total sequences as well
     return k_mer_sets, len(k_mer_sets)
 
-def iterate_over_samples(samples_dir, hash_table):
+def iterate_over_samples(samples_dir, hash_table,kmer_size):
     """
     Iterates over all sample files in the given directory, processes each file to extract k-mers,
     and inserts them into the provided hash table. Resizes the hash table if the load factor exceeds 0.65.
@@ -211,7 +211,7 @@ def iterate_over_samples(samples_dir, hash_table):
             seq_list = [str(record.seq) for record in SeqIO.parse(filepath, "fasta")]
             print(f"Processing {fasta_name} with {len(seq_list)} sequences.")
             #produce the kmer sets
-            k_mer_sets, num_sequences = produce_kmers(seq_list)
+            k_mer_sets, num_sequences = produce_kmers(seq_list,k_mer=kmer_size)
             #set the unique haplotype number
             haplotype_number = 0
             #now iterate through each set of kmers
@@ -303,7 +303,7 @@ def get_simliarity_values(sample_search_results, sample_kmer_counts, hash_table,
             if percent_simliarity >= threshold:
                 threshold_dict[(primary_sample, hit_sample)] = percent_simliarity
     return threshold_dict
-def compare_samples(hash_table,samples_dir_to_compare):
+def compare_samples(hash_table,samples_dir_to_compare,kmer_size):
     """
     Compare samples in a given directory against a hash table of kmers.
     Args:
@@ -334,7 +334,7 @@ def compare_samples(hash_table,samples_dir_to_compare):
             fasta_path = os.path.join(samples_dir_to_compare, fasta)
             seq_list = [str(record.seq) for record in SeqIO.parse(fasta_path, "fasta")]
             #get the kmers for the sample
-            k_mer_sets, num_sequences = produce_kmers(seq_list)
+            k_mer_sets, num_sequences = produce_kmers(seq_list,k_mer=kmer_size)
             #set the unique haplotype number
             haplotype_number = 0
             #now iterate through each set of kmers
@@ -369,7 +369,7 @@ def compare_samples(hash_table,samples_dir_to_compare):
     #return the dictionaries
     return sample_search_results, sample_kmer_counts
 #function to run the hash table initialization and key insertion
-def update_table(previous_hash_table, samples_dir_to_add, new_hash_table_name, save_table):
+def update_table(previous_hash_table, samples_dir_to_add, new_hash_table_name, save_table,kmer_size):
     """
     Updates an existing hash table with new samples and optionally saves the updated table.
 
@@ -386,12 +386,12 @@ def update_table(previous_hash_table, samples_dir_to_add, new_hash_table_name, s
     hash_table = FullHashTable.load_table(previous_hash_table)
     print(f"Size of loaded table: {hash_table.size}")
     # Iterate over the samples in the directory
-    hash_table = iterate_over_samples(samples_dir_to_add, hash_table)
+    hash_table = iterate_over_samples(samples_dir_to_add, hash_table,kmer_size)
     # Save the hash table to a file
     if save_table:
         hash_table.save_table(f"{new_hash_table_name}.pkl")
     return hash_table
-def create_new_table(table_size, samples_dir, new_hash_table_name, save_table):
+def create_new_table(table_size, samples_dir, new_hash_table_name, save_table, kmer_size):
     """
     Create a new hash table, populate it with data from samples, and optionally save it to a file.
 
@@ -407,7 +407,7 @@ def create_new_table(table_size, samples_dir, new_hash_table_name, save_table):
     #create a new hash table
     hash_table = FullHashTable(table_size)
     #iterate over the samples in the directory
-    hash_table = iterate_over_samples(samples_dir, hash_table)
+    hash_table = iterate_over_samples(samples_dir, hash_table, kmer_size)
     #save the hashtable to a file
     if save_table:
         hash_table.save_table(f"{new_hash_table_name}.pkl")
@@ -428,13 +428,14 @@ def main(argv=None):
     args = parser.parse_args(argv)
     
     hash_table = None
-    
+    #print(the kmer size being used)
+    logging.info(f"Kmer size being used is {args.kmer_size}")
     if args.mode == 'new':
         if args.samples_dir_to_add is None:
             logging.error("If --mode is 'new', --samples_dir (path) must be provided.")
             exit(1)
         print("New mode selected: a new hash table will be create from scratch\n")
-        hash_table = create_new_table(args.table_size, args.samples_dir_to_add, args.new_hash_table_name, args.save_table)
+        hash_table = create_new_table(args.table_size, args.samples_dir_to_add, args.new_hash_table_name, args.save_table, args.kmer_size)
     elif args.mode == 'update':
         if args.samples_dir_to_add is None:
             logging.error("If --mode is 'update', --samples_dir (path) must be provided.")
@@ -443,7 +444,7 @@ def main(argv=None):
             logging.error("If --mode is 'update', --previous_hash_table (path) must be provided.")
             exit(1)
         print("Update mode selected: a previous hash table will be loaded and updated with new samples\n")
-        hash_table = update_table(args.previous_hash_table, args.samples_dir_to_add, args.new_hash_table_name, args.save_table)
+        hash_table = update_table(args.previous_hash_table, args.samples_dir_to_add, args.new_hash_table_name, args.save_table, args.kmer_size)
     elif args.mode == 'load':
         if args.previous_hash_table is None:
             logging.error("If --mode is 'load', --previous_hash_table (path) must be provided.")
@@ -454,7 +455,7 @@ def main(argv=None):
     #if samples_dir_to_compare is provided, compare the samples 
     if args.samples_dir_to_compare is not None:
         #print(hash_table.display_table())
-        sample_search_results, sample_kmer_counts = compare_samples(hash_table, args.samples_dir_to_compare)
+        sample_search_results, sample_kmer_counts = compare_samples(hash_table, args.samples_dir_to_compare, args.kmer_size)
         #get the simliarity values
         threshold_dict = get_simliarity_values(sample_search_results,sample_kmer_counts,hash_table)
         #clean the threshold dict
