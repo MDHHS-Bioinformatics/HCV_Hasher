@@ -268,7 +268,7 @@ def clean_threshold_dict(threshold_dict):
             temp_dict[new_key] = value
     return temp_dict 
 
-def get_simliarity_values(sample_search_results, sample_kmer_counts, hash_table, threshold=50):
+def get_simliarity_values(sample_search_results, sample_kmer_counts, hash_table, threshold):
     """
     Calculate the similarity values between samples based on k-mer counts and a given threshold.
 
@@ -425,6 +425,7 @@ def main(argv=None):
     parser.add_argument('--kmer_size', type=int, default=25, help='Size of the k-mer to be used in the analysis')
     parser.add_argument('--save_table', action='store_true', help='Save the hash table after creation')
     parser.add_argument('--results_file', type=str, default='results.csv', help='Name of the outputted results file')
+    parser.add_argument('--similarity_threshold',type=int,default=50,help="Percent simliarity threshold to determine if pairs of samples are linked or not. Default is 50" )
     args = parser.parse_args(argv)
     
     hash_table = None
@@ -454,10 +455,11 @@ def main(argv=None):
     
     #if samples_dir_to_compare is provided, compare the samples 
     if args.samples_dir_to_compare is not None:
-        #print(hash_table.display_table())
+        print("Comparing samples in specified directory to hash table")
+        logging.info(f"Using a similarity_threshold of : {args.similarity_threshold}")
         sample_search_results, sample_kmer_counts = compare_samples(hash_table, args.samples_dir_to_compare, args.kmer_size)
         #get the simliarity values
-        threshold_dict = get_simliarity_values(sample_search_results,sample_kmer_counts,hash_table)
+        threshold_dict = get_simliarity_values(sample_search_results,sample_kmer_counts,hash_table, args.similarity_threshold)
         #clean the threshold dict
         threshold_dict = clean_threshold_dict(threshold_dict)
         #print the threshold dictionary 
