@@ -433,13 +433,13 @@ def main(argv=None):
     logging.info(f"Kmer size being used is {args.kmer_size}")
     if args.mode == 'new':
         if args.samples_dir_to_add is None:
-            logging.error("If --mode is 'new', --samples_dir (path) must be provided.")
+            logging.error("If --mode is 'new', --samples_dir_to_add (path) must be provided.")
             exit(1)
         print("New mode selected: a new hash table will be create from scratch\n")
         hash_table = create_new_table(args.table_size, args.samples_dir_to_add, args.new_hash_table_name, args.save_table, args.kmer_size)
     elif args.mode == 'update':
         if args.samples_dir_to_add is None:
-            logging.error("If --mode is 'update', --samples_dir (path) must be provided.")
+            logging.error("If --mode is 'update', --samples_dir_to_add (path) must be provided.")
             exit(1)
         if args.previous_hash_table is None:
             logging.error("If --mode is 'update', --previous_hash_table (path) must be provided.")
