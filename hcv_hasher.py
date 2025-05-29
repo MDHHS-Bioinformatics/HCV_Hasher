@@ -2,6 +2,9 @@
 # -*- coding: utf-8 -*-
 # hcv_hasher.py
 # A script to implement a hash table for storing k-mer information sample IDs
+
+__version__ = "1.0.dev"
+
 import mmh3  # MurmurHash3 for hashing
 import pandas as pd 
 from Bio import AlignIO
@@ -412,8 +415,7 @@ def create_new_table(table_size, samples_dir, new_hash_table_name, save_table, k
     if save_table:
         hash_table.save_table(f"{new_hash_table_name}.pkl")
     return hash_table
-def main(argv=None):
-    logging.info('Starting code\n')
+def main(argv=None): 
     #parse command line arguments
     parser = argparse.ArgumentParser(description='Hash table and kmer-ization implementation for HCV clustering')
     parser.add_argument('--table_size', type=int, default=500000, help='Size of the hash table to initialize with')
@@ -426,8 +428,10 @@ def main(argv=None):
     parser.add_argument('--save_table', action='store_true', help='Save the hash table after creation')
     parser.add_argument('--results_file', type=str, default='results.csv', help='Name of the outputted results file')
     parser.add_argument('--similarity_threshold',type=int,default=50,help="Percent similarity threshold to determine if pairs of samples are linked or not. Default is 50" )
+    parser.add_argument('--version', action='version', version=f'%(prog)s {__version__}')
     args = parser.parse_args(argv)
     
+    logging.info('Starting code\n')
     hash_table = None
     #print(the kmer size being used)
     logging.info(f"Kmer size being used is {args.kmer_size}")
