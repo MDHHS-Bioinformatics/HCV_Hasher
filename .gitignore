@@ -2,3 +2,4 @@
 run_*
 results*
 ampliseq_implementation/*
+python_notebooks/*
