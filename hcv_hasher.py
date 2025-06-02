@@ -13,10 +13,8 @@ from Bio.Seq import Seq
 from Bio.SeqRecord import SeqRecord
 import numpy as np
 import os 
-import random
 import pickle
 import argparse
-from pathlib import Path
 import logging
 logging.basicConfig(level=logging.INFO, format='%(asctime)s - %(levelname)s - %(message)s')
 
@@ -238,38 +236,80 @@ def iterate_over_samples(samples_dir, hash_table,kmer_size):
                 print(f"Table resized to {hash_table.size}")
     print("\nAll samples processed and added to hash table")
     return hash_table
-#create a function to clean the threshold dict to reduce to just the most simliar sample pairs, i.e only keep the best haplotype pair 
-def clean_threshold_dict(threshold_dict):
+#Function to store only the sample sample comarisions in a condensed dictionary
+def get_within_sample_values(threshold_dict):
     """
-    Cleans and processes a dictionary of threshold values.
+    Extracts and returns a dictionary of threshold values for sample pairs that belong to the same base sample.
 
-    This function takes a dictionary where the keys are tuples of sample names
-    and the values are threshold values. It cleans the sample names to use only
-    the base name (before the first underscore), ensures the key order is consistent,
-    and stores only the highest value for each sample pair.
+    This function iterates over a dictionary where keys are tuples of sample names and values are percent similarity values.
+    For each pair, it checks if the base names of the samples (defined as the part of the sample name before the last underscore)
+    are the same but the full sample names are different. If so, it adds the sorted pair and its value to the result dictionary,
+    ensuring that each pair is only included once (regardless of order).
 
     Args:
-        threshold_dict (dict): A dictionary with keys as tuples of sample names
-                               and values as threshold values.
+        threshold_dict (dict): A dictionary with keys as tuples of sample names (str, str) and values as percent similarities.
 
     Returns:
-        dict: A cleaned dictionary with consistent key order and highest threshold
-              values for each sample pair.
+        dict: A dictionary containing only those pairs where the base sample names match but the full sample names differ,
+              with keys as sorted tuples of sample names and values as the corresponding threshold values.
     """
-    #initialize a new dictionary to store out values 
+    within_sample_threshold_dict = {}
+    #iterate over the the threshold dictionary
+    for keys, value in threshold_dict.items():
+        #get the two sample names
+        sample_1, sample_2 = keys
+        # Get the base names of the samples (everything before the last underscore)
+        sample_1_base = sample_1.rsplit('_', 1)[0]
+        sample_2_base = sample_2.rsplit('_', 1)[0]
+        #Check if the base names are the same
+        if sample_1_base == sample_2_base:
+            #if the sample names are the same, skip this iteration
+            if sample_1 == sample_2:
+                continue
+            # print(sample_1_base,sample_2_base)
+            # print(sample_1,sample_2)
+            # Sort the sample pair to avoid duplicate keys like (A, B) and (B, A)
+            sorted_pair = tuple(sorted([sample_1, sample_2]))
+            within_sample_threshold_dict[sorted_pair] = value
+    return within_sample_threshold_dict
+
+#Function to store only unique sample comparitons and keep the most simliar pairs between samples
+def get_between_sample_values(threshold_dict):
+    """
+    Processes a dictionary of sample pair similarity values and returns a new dictionary
+    containing only the highest similarity value for each unique pair of base sample names,
+    excluding within-sample comparisons.
+
+    Args:
+        threshold_dict (dict): A dictionary where keys are tuples of sample names (str, str)
+            and values are similarity scores (numeric). 
+
+    Returns:
+        dict: A dictionary with keys as tuples of base sample names (str, str), sorted
+            alphabetically, and values as the highest similarity score observed between
+            any pair of samples from those base names.
+
+    Notes:
+        - Only between-sample comparisons are included (i.e., pairs with different base names).
+        - For each unique pair of base sample names, only the maximum similarity value is kept.
+        - The base sample name is defined as the portion of the sample name before the last underscore.
+    """
+    #initialize a new dictionary to store our values 
     temp_dict = {}
     for keys,value in threshold_dict.items():
-        #extract the two sample values 
+        #xtract the two sample values 
         sample_1, sample_2 = keys
-        #clean the sample names to just use the base name
-        sample_1 = sample_1.split('_')[0]
-        sample_2 = sample_2.split('_')[0]
-        # Ensure the key order is consistent
-        new_key = tuple(sorted((sample_1, sample_2)))
-        # Store only the highest value for each sample pair
-        if new_key not in temp_dict or temp_dict[new_key] < value:
-            temp_dict[new_key] = value
-    return temp_dict 
+        #clean the sample names to just use the base name (everything before the last underscore
+        sample_1_base = sample_1.rsplit('_', 1)[0]
+        sample_2_base = sample_2.rsplit('_', 1)[0]
+        #only do comparisons between samples not within samples
+        if sample_1_base != sample_2_base:
+            #Ensure the key order is consistent 
+            new_key = tuple(sorted((sample_1_base,sample_2_base)))
+            #Store only the highest percent similarity value for each sample pair
+            if new_key not in temp_dict or temp_dict[new_key] < value:
+                temp_dict[new_key] = value
+    return temp_dict
 
 def get_similarity_values(sample_search_results, sample_kmer_counts, hash_table, threshold):
     """
@@ -355,13 +395,12 @@ def compare_samples(hash_table,samples_dir_to_compare,kmer_size):
                     #print(result_set)
                     #iterate through each sampe name in the results set 
                     if result_set is not None:
-                        #do NOT store the results for the current sample if its in the hash table
                         for result in result_set:
-                            if fasta_name not in result:
-                                if result in temp_dict:
-                                    temp_dict[result] += 1
-                                else:
-                                    temp_dict[result] = 1
+                            #if fasta_name not in result: #this will prevent the current sample from being stored 
+                            if result in temp_dict:
+                                temp_dict[result] += 1
+                            else:
+                                temp_dict[result] = 1
                 #update the respective dictionaries
                 sample_kmer_counts[sample_name] = kmer_count
                 #store the search results in the dictionary
@@ -427,7 +466,7 @@ def main(argv=None):
     parser.add_argument('--kmer_size', type=int, default=25, help='Size of the k-mer to be used in the analysis')
     parser.add_argument('--save_table', action='store_true', help='Save the hash table after creation')
     parser.add_argument('--results_file', type=str, default='results.csv', help='Name of the outputted results file')
-    parser.add_argument('--similarity_threshold',type=int,default=50,help="Percent similarity threshold to determine if pairs of samples are linked or not. Default is 50" )
+    parser.add_argument('--similarity_threshold',type=int,default=0,help="Percent similarity threshold to determine if pairs of samples are linked or not. Default is 0" )
     parser.add_argument('--version', action='version', version=f'%(prog)s {__version__}')
     args = parser.parse_args(argv)
     
@@ -464,15 +503,22 @@ def main(argv=None):
         sample_search_results, sample_kmer_counts = compare_samples(hash_table, args.samples_dir_to_compare, args.kmer_size)
         #get the similarity values
         threshold_dict = get_similarity_values(sample_search_results,sample_kmer_counts,hash_table, args.similarity_threshold)
-        #clean the threshold dict
-        threshold_dict = clean_threshold_dict(threshold_dict)
-        #print the threshold dictionary 
-        results_df = pd.DataFrame(
-            [(primary_sample, hit_sample, percent_similarity) for (primary_sample, hit_sample), percent_similarity in threshold_dict.items()],
-            columns=["sample_1", "sample_2", "percent_similarity"]
+        #get the within sample similarity values
+        within_sample_dict = get_within_sample_values(threshold_dict)
+        #get the between sample similarity values 
+        between_sample_dict = get_between_sample_values(threshold_dict)
+        #generate the dataframes
+        between_samples_df = pd.DataFrame(
+            [(primary_sample, hit_sample, percent_similarity) for (primary_sample, hit_sample), percent_similarity in between_sample_dict.items()],
+                    columns=["sample_1", "sample_2", "percent_similarity"]
         )
-        results_df.to_csv(args.results_file, index=False)
-        print("Similarity values saved to results.csv")
+        within_samples_df = pd.DataFrame(
+            [(primary_sample, hit_sample, percent_similarity) for (primary_sample, hit_sample), percent_similarity in within_sample_dict.items()],
+                    columns=["sample_1", "sample_2", "percent_similarity"]
+        )
+        #save the two dataframes
+        between_samples_df.to_csv('between_sample_percent_similarities.csv',index=False)
+        within_samples_df.to_csv('within_sample_percent_similiariteis.csv',index=False)
     logging.info('Code finished running')
 #write main function to test the class
 if __name__ == "__main__":
