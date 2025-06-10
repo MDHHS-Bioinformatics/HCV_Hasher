@@ -518,7 +518,7 @@ def main(argv=None):
         )
         #save the two dataframes
         between_samples_df.to_csv('between_sample_percent_similarities.csv',index=False)
-        within_samples_df.to_csv('within_sample_percent_similiariteis.csv',index=False)
+        within_samples_df.to_csv('within_sample_percent_similarities.csv',index=False)
     logging.info('Code finished running')
 #write main function to test the class
 if __name__ == "__main__":
