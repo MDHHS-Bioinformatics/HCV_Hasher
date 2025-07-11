@@ -4,3 +4,4 @@ results*
 ampliseq_implementation/*
 python_notebooks/*
 *.csv
+__pycache__/
