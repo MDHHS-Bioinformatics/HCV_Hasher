@@ -1,5 +1,5 @@
 *test*
-run_*
+bash_scripts/*
 results*
 ampliseq_implementation/*
 python_notebooks/*
