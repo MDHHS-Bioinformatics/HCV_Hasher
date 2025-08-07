@@ -458,7 +458,7 @@ def main(argv=None):
     #parse command line arguments
     parser = argparse.ArgumentParser(description='Hash table and kmer-ization implementation for HCV clustering')
     parser.add_argument('--table_size', type=int, default=500000, help='Size of the hash table to initialize with')
-    parser.add_argument('--mode', type=str, choices=['new', 'update', 'load'], required=True, help='Mode to perform: new, update, or load')
+    parser.add_argument('--mode', type=str, choices=['initialize', 'update', 'load'], required=True, help='Mode to perform: initialize, update, or load')
     parser.add_argument('--samples_dir_to_add', type=str, help='Directory of samples to add to the hash table')
     parser.add_argument('--samples_dir_to_compare', type=str, help='Directory of samples to compare to the hash table')
     parser.add_argument('--previous_hash_table', type=str, help="Path to a previous hash table to load in and use")
@@ -474,11 +474,11 @@ def main(argv=None):
     hash_table = None
     #print(the kmer size being used)
     logging.info(f"Kmer size being used is {args.kmer_size}")
-    if args.mode == 'new':
+    if args.mode == 'initialize':
         if args.samples_dir_to_add is None:
-            logging.error("If --mode is 'new', --samples_dir_to_add (path) must be provided.")
+            logging.error("If --mode is 'initialize', --samples_dir_to_add (path) must be provided.")
             exit(1)
-        print("New mode selected: a new hash table will be create from scratch\n")
+        print("Initialize mode selected: a new hash table will be created from scratch\n")
         hash_table = create_new_table(args.table_size, args.samples_dir_to_add, args.new_hash_table_name, args.save_table, args.kmer_size)
     elif args.mode == 'update':
         if args.samples_dir_to_add is None:
