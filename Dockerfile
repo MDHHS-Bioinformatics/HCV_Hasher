@@ -4,7 +4,11 @@ FROM python:3.9.19-slim
 # Set the working directory inside the container
 WORKDIR /app
 
-# Copy the Python script and any other necessary files into the container
+# Install ps command and bash
+RUN apt-get update && \
+    apt-get install -y procps bash && \
+    rm -rf /var/lib/apt/lists/*
+
 COPY hcv_hasher.py /app/
 
 # Install required dependencies
@@ -14,5 +18,4 @@ RUN pip install --no-cache-dir \
     biopython \
     numpy
 
-# Set the default command to run the script
-ENTRYPOINT ["python", "hcv_hasher.py"]
+
