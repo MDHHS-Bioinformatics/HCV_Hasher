@@ -274,7 +274,7 @@ def get_within_sample_values(threshold_dict):
     return within_sample_threshold_dict
 
 #Function to store only unique sample comparitons and keep the most simliar pairs between samples
-def get_between_sample_values(threshold_dict):
+def get_between_sample_values(threshold_dict,threshold=50):
     """
     Processes a dictionary of sample pair similarity values and returns a new dictionary
     containing only the highest similarity value for each unique pair of base sample names,
@@ -288,6 +288,8 @@ def get_between_sample_values(threshold_dict):
         dict: A dictionary with keys as tuples of base sample names (str, str), sorted
             alphabetically, and values as the highest similarity score observed between
             any pair of samples from those base names.
+        dict: A dictionary with keys as tuples of original sample names (str, str) that meet or exceed
+            the specified threshold, and values as their corresponding similarity scores.
 
     Notes:
         - Only between-sample comparisons are included (i.e., pairs with different base names).
@@ -296,6 +298,8 @@ def get_between_sample_values(threshold_dict):
     """
     #initialize a new dictionary to store our values 
     temp_dict = {}
+    temp_haplotype_dict = {}
+    haplotype_dict = {}
     for keys,value in threshold_dict.items():
         #xtract the two sample values 
         sample_1, sample_2 = keys
@@ -309,7 +313,13 @@ def get_between_sample_values(threshold_dict):
             #Store only the highest percent similarity value for each sample pair
             if new_key not in temp_dict or temp_dict[new_key] < value:
                 temp_dict[new_key] = value
-    return temp_dict
+                temp_haplotype_dict[new_key] = (sample_1, sample_2)
+    #now iterate through our temp dict and use the threshold to keep track of haplotype linkages
+    for keys, values in temp_haplotype_dict.items():
+        percent_sim = temp_dict[keys]
+        if percent_sim >= threshold:
+            haplotype_dict[values] = percent_sim
+    return temp_dict,haplotype_dict
 
 def get_similarity_values(sample_search_results, sample_kmer_counts, hash_table, threshold):
     """
@@ -506,7 +516,7 @@ def main(argv=None):
         #get the within sample similarity values
         within_sample_dict = get_within_sample_values(threshold_dict)
         #get the between sample similarity values 
-        between_sample_dict = get_between_sample_values(threshold_dict)
+        between_sample_dict,haplotype_linkage_dict = get_between_sample_values(threshold_dict)
         #generate the dataframes
         between_samples_df = pd.DataFrame(
             [(primary_sample, hit_sample, percent_similarity) for (primary_sample, hit_sample), percent_similarity in between_sample_dict.items()],
@@ -516,9 +526,14 @@ def main(argv=None):
             [(primary_sample, hit_sample, percent_similarity) for (primary_sample, hit_sample), percent_similarity in within_sample_dict.items()],
                     columns=["sample_1", "sample_2", "percent_similarity"]
         )
+        haplotype_linkage_df = pd.DataFrame(
+            [(sample_1, sample_2, percent_similarity) for (sample_1, sample_2), percent_similarity in haplotype_linkage_dict.items()],
+                    columns=["sample_1", "sample_2", "percent_similarity"]
+        )
         #save the two dataframes
         between_samples_df.to_csv('between_sample_percent_similarities.csv',index=False)
         within_samples_df.to_csv('within_sample_percent_similarities.csv',index=False)
+        haplotype_linkage_df.to_csv('haplotype_linkages.csv',index=False)
     logging.info('Code finished running')
 #write main function to test the class
 if __name__ == "__main__":
