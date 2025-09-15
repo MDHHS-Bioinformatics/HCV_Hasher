@@ -321,7 +321,7 @@ def get_between_sample_values(threshold_dict,threshold=50):
             haplotype_dict[values] = percent_sim
     return temp_dict,haplotype_dict
 
-def get_similarity_values(sample_search_results, sample_kmer_counts, hash_table, threshold):
+def get_similarity_values(sample_search_results, sample_kmer_counts, hash_table):
     """
     Calculate the similarity values between samples based on k-mer counts and a given threshold.
 
@@ -353,8 +353,8 @@ def get_similarity_values(sample_search_results, sample_kmer_counts, hash_table,
             #calculate the percent simliitariy 
             percent_similarity = (hit_counts / total_unique_counts) * 100
             #if the percent similarity is greater than the threshold, store it in a new dictionary
-            if percent_similarity >= threshold:
-                threshold_dict[(primary_sample, hit_sample)] = percent_similarity
+            #if percent_similarity >= threshold:
+            threshold_dict[(primary_sample, hit_sample)] = percent_similarity
     return threshold_dict
 def compare_samples(hash_table,samples_dir_to_compare,kmer_size):
     """
@@ -512,11 +512,11 @@ def main(argv=None):
         logging.info(f"Using a similarity_threshold of : {args.similarity_threshold}")
         sample_search_results, sample_kmer_counts = compare_samples(hash_table, args.samples_dir_to_compare, args.kmer_size)
         #get the similarity values
-        threshold_dict = get_similarity_values(sample_search_results,sample_kmer_counts,hash_table, args.similarity_threshold)
+        similarity_dict = get_similarity_values(sample_search_results,sample_kmer_counts,hash_table)
         #get the within sample similarity values
-        within_sample_dict = get_within_sample_values(threshold_dict)
+        within_sample_dict = get_within_sample_values(similarity_dict)
         #get the between sample similarity values 
-        between_sample_dict,haplotype_linkage_dict = get_between_sample_values(threshold_dict)
+        between_sample_dict,haplotype_linkage_dict = get_between_sample_values(similarity_dict)
         #generate the dataframes
         between_samples_df = pd.DataFrame(
             [(primary_sample, hit_sample, percent_similarity) for (primary_sample, hit_sample), percent_similarity in between_sample_dict.items()],
