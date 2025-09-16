@@ -475,7 +475,6 @@ def main(argv=None):
     parser.add_argument('--new_hash_table_name', type=str, default='hcv_hash_table', help='Name of the final outputted Hash table. If a hash table is being updated, the updated table will be saved to the new name')
     parser.add_argument('--kmer_size', type=int, default=15, help='Size of the k-mer to be used in the analysis')
     parser.add_argument('--save_table', action='store_true', help='Save the hash table after creation')
-    parser.add_argument('--results_file', type=str, default='results.csv', help='Name of the outputted results file')
     parser.add_argument('--linkage_threshold',type=int,default=50,help="Percent similarity threshold to store the specific haplotype linakges of potentially linked samples. Default:50" )
     parser.add_argument('--version', action='version', version=f'%(prog)s {__version__}')
     args = parser.parse_args(argv)
