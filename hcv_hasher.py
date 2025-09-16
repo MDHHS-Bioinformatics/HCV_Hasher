@@ -476,7 +476,7 @@ def main(argv=None):
     parser.add_argument('--kmer_size', type=int, default=15, help='Size of the k-mer to be used in the analysis')
     parser.add_argument('--save_table', action='store_true', help='Save the hash table after creation')
     parser.add_argument('--results_file', type=str, default='results.csv', help='Name of the outputted results file')
-    parser.add_argument('--similarity_threshold',type=int,default=0,help="Percent similarity threshold to determine if pairs of samples are linked or not. Default is 0" )
+    parser.add_argument('--linkage_threshold',type=int,default=50,help="Percent similarity threshold to store the specific haplotype linakges of potentially linked samples. Default:50" )
     parser.add_argument('--version', action='version', version=f'%(prog)s {__version__}')
     args = parser.parse_args(argv)
     
@@ -509,14 +509,14 @@ def main(argv=None):
     #if samples_dir_to_compare is provided, compare the samples 
     if args.samples_dir_to_compare is not None:
         print("Comparing samples in specified directory to hash table")
-        logging.info(f"Using a similarity_threshold of : {args.similarity_threshold}")
+        logging.info(f"Using a linkage_threshold of : {args.linkage_threshold}")
         sample_search_results, sample_kmer_counts = compare_samples(hash_table, args.samples_dir_to_compare, args.kmer_size)
         #get the similarity values
         similarity_dict = get_similarity_values(sample_search_results,sample_kmer_counts,hash_table)
         #get the within sample similarity values
         within_sample_dict = get_within_sample_values(similarity_dict)
         #get the between sample similarity values 
-        between_sample_dict,haplotype_linkage_dict = get_between_sample_values(similarity_dict)
+        between_sample_dict,haplotype_linkage_dict = get_between_sample_values(similarity_dict,args.linkage_threshold)
         #generate the dataframes
         between_samples_df = pd.DataFrame(
             [(primary_sample, hit_sample, percent_similarity) for (primary_sample, hit_sample), percent_similarity in between_sample_dict.items()],
