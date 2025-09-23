@@ -3,7 +3,7 @@
 # hcv_hasher.py
 # A script to implement a hash table for storing k-mer information sample IDs
 
-__version__ = "1.1.dev"
+__version__ = "1.0.0"
 
 import mmh3  # MurmurHash3 for hashing
 import pandas as pd 
@@ -473,7 +473,7 @@ def main(argv=None):
     parser.add_argument('--samples_dir_to_compare', type=str, help='Directory of samples to compare to the hash table')
     parser.add_argument('--previous_hash_table', type=str, help="Path to a previous hash table to load in and use")
     parser.add_argument('--new_hash_table_name', type=str, default='hcv_hash_table', help='Name of the final outputted Hash table. If a hash table is being updated, the updated table will be saved to the new name')
-    parser.add_argument('--kmer_size', type=int, default=15, help='Size of the k-mer to be used in the analysis')
+    parser.add_argument('--kmer_size', type=int, default=10, help='Size of the k-mer to be used in the analysis. Default is 10')
     parser.add_argument('--save_table', action='store_true', help='Save the hash table after creation')
     parser.add_argument('--linkage_threshold',type=int,default=50,help="Percent similarity threshold to store the specific haplotype linakges of potentially linked samples. Default:50" )
     parser.add_argument('--version', action='version', version=f'%(prog)s {__version__}')
