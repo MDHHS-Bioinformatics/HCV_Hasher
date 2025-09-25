@@ -297,29 +297,29 @@ def get_between_sample_values(threshold_dict,threshold=50):
         - The base sample name is defined as the portion of the sample name before the last underscore.
     """
     #initialize a new dictionary to store our values 
-    temp_dict = {}
-    temp_haplotype_dict = {}
+    max_similarity_dict = {}
     haplotype_dict = {}
-    for keys,value in threshold_dict.items():
-        #xtract the two sample values 
-        sample_1, sample_2 = keys
+    for (sample_1,sample_2),value in threshold_dict.items():
         #clean the sample names to just use the base name (everything before the last underscore
         sample_1_base = sample_1.rsplit('_', 1)[0]
         sample_2_base = sample_2.rsplit('_', 1)[0]
         #only do comparisons between samples not within samples
-        if sample_1_base != sample_2_base:
-            #Ensure the key order is consistent 
-            new_key = tuple(sorted((sample_1_base,sample_2_base)))
-            #Store only the highest percent similarity value for each sample pair
-            if new_key not in temp_dict or temp_dict[new_key] < value:
-                temp_dict[new_key] = value
-                temp_haplotype_dict[new_key] = (sample_1, sample_2)
-    #now iterate through our temp dict and use the threshold to keep track of haplotype linkages
-    for keys, values in temp_haplotype_dict.items():
-        percent_sim = temp_dict[keys]
-        if percent_sim >= threshold:
-            haplotype_dict[values] = percent_sim
-    return temp_dict,haplotype_dict
+        if sample_1_base == sample_2_base:
+            continue # skipping same sample comparison 
+        
+        #sort keys in more efficient manner
+        if sample_1_base < sample_2_base:
+            new_key = (sample_1_base, sample_2_base)
+        else:
+            new_key = (sample_2_base, sample_1_base)
+            
+        #keep max similarity value for each sample pair
+        if value > max_similarity_dict.get(new_key, -float('inf')):
+            max_similarity_dict[new_key] = value
+            if value >= threshold:
+                haplotype_dict[(sample_1, sample_2)] = value
+                
+    return max_similarity_dict, haplotype_dict  
 
 def get_similarity_values(sample_search_results, sample_kmer_counts, hash_table):
     """
@@ -350,8 +350,8 @@ def get_similarity_values(sample_search_results, sample_kmer_counts, hash_table)
             hit_sample_kmer_count = id_counts[hit_sample]
             #calculate the total unique kmer counts between our primary and hit sample 
             total_unique_counts = (primary_sample_kmer_count + hit_sample_kmer_count) - hit_counts
-            #calculate the percent simliitariy and round to two decimal places
-            percent_similarity = round(((hit_counts / total_unique_counts) * 100),2)
+            #calculate the percent simliitariy and round to three decimal places
+            percent_similarity = round(((hit_counts / total_unique_counts) * 100),3)
             #if the percent similarity is greater than the threshold, store it in a new dictionary
             #if percent_similarity >= threshold:
             threshold_dict[(primary_sample, hit_sample)] = percent_similarity
