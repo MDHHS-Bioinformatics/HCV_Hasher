@@ -3,7 +3,7 @@
 # hcv_hasher.py
 # A script to implement a hash table for storing k-mer information sample IDs
 
-__version__ = "1.0.0"
+__version__ = "1.0.1"
 
 import mmh3  # MurmurHash3 for hashing
 import pandas as pd 
@@ -350,8 +350,8 @@ def get_similarity_values(sample_search_results, sample_kmer_counts, hash_table)
             hit_sample_kmer_count = id_counts[hit_sample]
             #calculate the total unique kmer counts between our primary and hit sample 
             total_unique_counts = (primary_sample_kmer_count + hit_sample_kmer_count) - hit_counts
-            #calculate the percent simliitariy 
-            percent_similarity = (hit_counts / total_unique_counts) * 100
+            #calculate the percent simliitariy and round to two decimal places
+            percent_similarity = round(((hit_counts / total_unique_counts) * 100),2)
             #if the percent similarity is greater than the threshold, store it in a new dictionary
             #if percent_similarity >= threshold:
             threshold_dict[(primary_sample, hit_sample)] = percent_similarity
@@ -529,6 +529,10 @@ def main(argv=None):
             [(sample_1, sample_2, percent_similarity) for (sample_1, sample_2), percent_similarity in haplotype_linkage_dict.items()],
                     columns=["sample_1", "sample_2", "percent_similarity"]
         )
+        #sort values by percent similarity for the three dataframes
+        between_samples_df = between_samples_df.sort_values(by="percent_similarity", ascending=False)
+        within_samples_df = within_samples_df.sort_values(by="percent_similarity", ascending=False)
+        haplotype_linkage_df = haplotype_linkage_df.sort_values(by="percent_similarity", ascending=False)
         #save the two dataframes
         between_samples_df.to_csv('between_sample_percent_similarities.csv',index=False)
         within_samples_df.to_csv('within_sample_percent_similarities.csv',index=False)
