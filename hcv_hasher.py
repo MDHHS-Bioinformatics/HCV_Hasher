@@ -253,11 +253,10 @@ def get_within_sample_values(threshold_dict):
         dict: A dictionary containing only those pairs where the base sample names match but the full sample names differ,
               with keys as sorted tuples of sample names and values as the corresponding threshold values.
     """
+    #initialize a new dictionary to store our values
     within_sample_threshold_dict = {}
     #iterate over the the threshold dictionary
-    for keys, value in threshold_dict.items():
-        #get the two sample names
-        sample_1, sample_2 = keys
+    for (sample_1, sample_2), value in threshold_dict.items():
         # Get the base names of the samples (everything before the last underscore)
         sample_1_base = sample_1.rsplit('_', 1)[0]
         sample_2_base = sample_2.rsplit('_', 1)[0]
@@ -266,13 +265,16 @@ def get_within_sample_values(threshold_dict):
             #if the sample names are the same, skip this iteration
             if sample_1 == sample_2:
                 continue
-            # print(sample_1_base,sample_2_base)
-            # print(sample_1,sample_2)
-            # Sort the sample pair to avoid duplicate keys like (A, B) and (B, A)
-            sorted_pair = tuple(sorted([sample_1, sample_2]))
-            within_sample_threshold_dict[sorted_pair] = value
+            #sort keys in more efficient manner
+            if sample_1 < sample_2:
+                new_key = (sample_1, sample_2)
+            else:
+                new_key = (sample_2, sample_1)
+            #store the hapltoype-hapltype comparison for each sample
+            within_sample_threshold_dict[new_key] = value
     return within_sample_threshold_dict
-
+    
+    
 #Function to store only unique sample comparitons and keep the most simliar pairs between samples
 def get_between_sample_values(threshold_dict,threshold=50):
     """
