@@ -3,7 +3,7 @@
 # hcv_hasher.py
 # A script to implement a hash table for storing k-mer information sample IDs
 
-__version__ = "1.0.1"
+__version__ = "1.0.2"
 
 import mmh3  # MurmurHash3 for hashing
 import pandas as pd 
