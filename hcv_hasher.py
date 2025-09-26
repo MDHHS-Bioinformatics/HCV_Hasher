@@ -299,8 +299,8 @@ def get_between_sample_values(threshold_dict,threshold=50):
         - The base sample name is defined as the portion of the sample name before the last underscore.
     """
     #initialize a new dictionary to store our values 
-    max_similarity_dict = {}
-    haplotype_dict = {}
+    between_sample_dict = {}
+    haplotype_linkage_dict = {}
     for (sample_1,sample_2),value in threshold_dict.items():
         #clean the sample names to just use the base name (everything before the last underscore
         sample_1_base = sample_1.rsplit('_', 1)[0]
@@ -312,16 +312,19 @@ def get_between_sample_values(threshold_dict,threshold=50):
         #sort keys in more efficient manner
         if sample_1_base < sample_2_base:
             new_key = (sample_1_base, sample_2_base)
+            inner_key = (sample_1, sample_2)
         else:
             new_key = (sample_2_base, sample_1_base)
+            inner_key = (sample_2, sample_1)
             
         #keep max similarity value for each sample pair
-        if value > max_similarity_dict.get(new_key, -float('inf')):
-            max_similarity_dict[new_key] = value
+        if value > between_sample_dict.get(new_key, -float('inf')):
+            between_sample_dict[new_key] = value
             if value >= threshold:
-                haplotype_dict[(sample_1, sample_2)] = value
+                inner_key+= (value,)
+                haplotype_linkage_dict[new_key] = inner_key
                 
-    return max_similarity_dict, haplotype_dict  
+    return between_sample_dict, haplotype_linkage_dict  
 
 def get_similarity_values(sample_search_results, sample_kmer_counts, hash_table):
     """
@@ -528,13 +531,15 @@ def main(argv=None):
                     columns=["sample_1", "sample_2", "percent_similarity"]
         )
         haplotype_linkage_df = pd.DataFrame(
-            [(sample_1, sample_2, percent_similarity) for (sample_1, sample_2), percent_similarity in haplotype_linkage_dict.items()],
-                    columns=["sample_1", "sample_2", "percent_similarity"]
+            [(sample_1_base, sample_2_base, sample_1, sample_2, percent_similarity) for (sample_1_base, sample_2_base), (sample_1,sample_2,percent_similarity) in haplotype_linkage_dict.items()],
+                    columns=["sample_1_base", "sample_2_base", "sample_1", "sample_2", "percent_similarity"]
         )
         #sort values by percent similarity for the three dataframes
         between_samples_df = between_samples_df.sort_values(by="percent_similarity", ascending=False)
         within_samples_df = within_samples_df.sort_values(by="percent_similarity", ascending=False)
         haplotype_linkage_df = haplotype_linkage_df.sort_values(by="percent_similarity", ascending=False)
+        #drop sample_1_base and sample_2_base columns
+        haplotype_linkage_df = haplotype_linkage_df.drop(columns=["sample_1_base", "sample_2_base"])
         #save the two dataframes
         between_samples_df.to_csv('between_sample_percent_similarities.csv',index=False)
         within_samples_df.to_csv('within_sample_percent_similarities.csv',index=False)
