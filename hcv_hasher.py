@@ -535,9 +535,9 @@ def main(argv=None):
                     columns=["sample_1_base", "sample_2_base", "sample_1", "sample_2", "percent_similarity"]
         )
         #sort values by percent similarity for the three dataframes
-        between_samples_df = between_samples_df.sort_values(by="percent_similarity", ascending=False)
-        within_samples_df = within_samples_df.sort_values(by="percent_similarity", ascending=False)
-        haplotype_linkage_df = haplotype_linkage_df.sort_values(by="percent_similarity", ascending=False)
+        between_samples_df = between_samples_df.sort_values(by=["percent_similarity", "sample_1","sample_2"], ascending=False)
+        within_samples_df = within_samples_df.sort_values(by=["percent_similarity", "sample_1","sample_2"], ascending=False)
+        haplotype_linkage_df = haplotype_linkage_df.sort_values(by=["percent_similarity", "sample_1","sample_2"], ascending=False)
         #drop sample_1_base and sample_2_base columns
         haplotype_linkage_df = haplotype_linkage_df.drop(columns=["sample_1_base", "sample_2_base"])
         #save the two dataframes
