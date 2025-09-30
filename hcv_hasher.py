@@ -31,29 +31,29 @@ class FullHashTable:
         size (int): The size of the hash table.
         """
         self.size = size
-        self.table = np.full(size, None, dtype=object)  # Store (key, tax_id_set) tuples
+        self.table = np.full(size, None, dtype=object)  # Store (key, sample_id_set) tuples
 
-    def insert(self, key, tax_id):
+    def insert(self, key, sample_id):
         """
         Insert a key-value pair into the hash table.
 
         Parameters:
         key (str): The k-mer to be inserted.
-        tax_id (str): The sample ID associated with the k-mer.
+        sample_id (str): The sample ID associated with the k-mer.
         """
         full_hash = mmh3.hash(key, signed=False)  # Compute full 32-bit MurmurHash3
         index = full_hash % self.size  # Compute index using modulo operation
 
         # Linear probing for collision resolution
         while self.table[index] is not None:
-            stored_key, stored_tax_ids = self.table[index]
+            stored_key, stored_sample_ids = self.table[index]
             if stored_key == key:
-                stored_tax_ids.add(tax_id)  # Add tax_id if key already exists
+                stored_sample_ids.add(sample_id)  # Add sample_id if key already exists
                 return
             index = (index + 1) % self.size  # Move to the next index
 
-        # Store key and associated tax_id set
-        self.table[index] = (key, {tax_id})  
+        # Store key and associated sample_id set
+        self.table[index] = (key, {sample_id})  
 
     def search(self, key):
         """
@@ -70,9 +70,9 @@ class FullHashTable:
 
         # Linear probing for search
         while self.table[index] is not None:
-            stored_key, stored_tax_ids = self.table[index]
+            stored_key, stored_sample_ids = self.table[index]
             if stored_key == key:  # Fix: Compare key directly
-                return stored_tax_ids  # Return the set of taxonomic IDs
+                return stored_sample_ids  # Return the set of taxonomic IDs
             index = (index + 1) % self.size
         return None  # Key not found
 
@@ -86,9 +86,9 @@ class FullHashTable:
         temp_hash_table = FullHashTable(new_size)  # Create a new hash table
         for entry in self.table:
             if entry is not None:
-                key, tax_ids = entry
-                for tax_id in tax_ids:  
-                    temp_hash_table.insert(key, tax_id)  # Reinsert correctly
+                key, sample_ids = entry
+                for sample_id in sample_ids:  
+                    temp_hash_table.insert(key, sample_id)  # Reinsert correctly
         # Update to new table
         self.size = temp_hash_table.size
         self.table = temp_hash_table.table
@@ -133,30 +133,30 @@ class FullHashTable:
         print(f"Hash table loaded from {filename}")
         return new_ht
 
-    def get_tax_id_counts(self):
+    def get_sample_id_counts(self):
         """
         Count occurrences of each sample ID in the hash table.
 
         Returns:
         dict: A dictionary with sample IDs as keys and their counts as values.
         """
-        tax_id_counts = {}
+        sample_id_counts = {}
         for entry in self.table:
             if entry is not None:
-                _, tax_ids = entry
-                for tax_id in tax_ids:
-                    tax_id_counts[tax_id] = tax_id_counts.get(tax_id, 0) + 1
-        return tax_id_counts
+                _, sample_ids = entry
+                for sample_id in sample_ids:
+                    sample_id_counts[sample_id] = sample_id_counts.get(sample_id, 0) + 1
+        return sample_id_counts
 
-    def get_tax_id_counts_df(self):
+    def get_sample_id_counts_df(self):
         """
         Return a DataFrame with sample IDs and their respective counts.
 
         Returns:
-        pandas.DataFrame: A DataFrame with columns "tax_id" and "counts".
+        pandas.DataFrame: A DataFrame with columns "sample_id" and "counts".
         """
-        tax_id_counts = self.get_tax_id_counts()
-        return pd.DataFrame(list(tax_id_counts.items()), columns=["tax_id", "counts"])
+        sample_id_counts = self.get_sample_id_counts()
+        return pd.DataFrame(list(sample_id_counts.items()), columns=["sample_id", "counts"])
 
     def display_table(self):
         """
@@ -334,7 +334,7 @@ def get_similarity_values(sample_search_results, sample_kmer_counts, hash_table)
         sample_search_results (dict): A dictionary where keys are primary sample IDs and values are dictionaries 
                                           of hit sample IDs and their respective k-mer hit counts.
         sample_kmer_counts (dict): A dictionary where keys are sample IDs and values are their respective total k-mer counts.
-        hash_table (object): An object that contains the method get_tax_id_counts() which returns a dictionary of sample IDs 
+        hash_table (object): An object that contains the method get_sample_id_counts() which returns a dictionary of sample IDs 
                                  and their respective total k-mer counts.
         threshold (int, optional): The minimum percentage similarity required to include the sample pair in the result. 
                                        Defaults to 50.
@@ -343,7 +343,7 @@ def get_similarity_values(sample_search_results, sample_kmer_counts, hash_table)
         dict: A dictionary where keys are tuples of (primary_sample, hit_sample) and values are the percentage similarity 
                   between the primary sample and the hit sample, only including pairs that meet or exceed the threshold.
     """
-    id_counts = hash_table.get_tax_id_counts()
+    id_counts = hash_table.get_sample_id_counts()
     #create a new threshold dictionary to store samples who meet the threshold 
     threshold_dict = {}  
     for primary_sample, search_results in sample_search_results.items():
