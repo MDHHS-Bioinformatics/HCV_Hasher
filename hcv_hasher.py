@@ -16,6 +16,8 @@ import os
 import pickle
 import argparse
 import logging
+from collections import Counter 
+
 logging.basicConfig(level=logging.INFO, format='%(asctime)s - %(levelname)s - %(message)s')
 
 class FullHashTable:
@@ -236,195 +238,102 @@ def iterate_over_samples(samples_dir, hash_table,kmer_size):
                 print(f"Table resized to {hash_table.size}")
     print("\nAll samples processed and added to hash table")
     return hash_table
-#Function to store only the sample sample comarisions in a condensed dictionary
-def get_within_sample_values(threshold_dict):
+
+def iter_kmers(seq, k):
+    for i in range(len(seq) - k + 1):
+        yield seq[i:i+k]
+
+def compare_and_compute_similarities(hash_table,samples_dir_to_compare,kmer_size,linkage_threshold):
     """
-    Extracts and returns a dictionary of threshold values for sample pairs that belong to the same base sample.
-
-    This function iterates over a dictionary where keys are tuples of sample names and values are percent similarity values.
-    For each pair, it checks if the base names of the samples (defined as the part of the sample name before the last underscore)
-    are the same but the full sample names are different. If so, it adds the sorted pair and its value to the result dictionary,
-    ensuring that each pair is only included once (regardless of order).
-
-    Args:
-        threshold_dict (dict): A dictionary with keys as tuples of sample names (str, str) and values as percent similarities.
-
-    Returns:
-        dict: A dictionary containing only those pairs where the base sample names match but the full sample names differ,
-              with keys as sorted tuples of sample names and values as the corresponding threshold values.
+    Memory-efficient combined comparison + similarity computation.
     """
-    #initialize a new dictionary to store our values
-    within_sample_threshold_dict = {}
-    #iterate over the the threshold dictionary
-    for (sample_1, sample_2), value in threshold_dict.items():
-        # Get the base names of the samples (everything before the last underscore)
-        sample_1_base = sample_1.rsplit('_', 1)[0]
-        sample_2_base = sample_2.rsplit('_', 1)[0]
-        #Check if the base names are the same
-        if sample_1_base == sample_2_base:
-            #if the sample names are the same, skip this iteration
-            if sample_1 == sample_2:
-                continue
-            #sort keys in more efficient manner
-            if sample_1 < sample_2:
-                new_key = (sample_1, sample_2)
-            else:
-                new_key = (sample_2, sample_1)
-            #store the hapltoype-hapltype comparison for each sample
-            within_sample_threshold_dict[new_key] = value
-    return within_sample_threshold_dict
-    
-    
-#Function to store only unique sample comparitons and keep the most simliar pairs between samples
-def get_between_sample_values(threshold_dict,threshold=50):
-    """
-    Processes a dictionary of sample pair similarity values and returns a new dictionary
-    containing only the highest similarity value for each unique pair of base sample names,
-    excluding within-sample comparisons.
 
-    Args:
-        threshold_dict (dict): A dictionary where keys are tuples of sample names (str, str)
-            and values are similarity scores (numeric). 
+    # Precompute total kmer counts from hash table
+    id_counts = hash_table.get_sample_id_counts()
 
-    Returns:
-        dict: A dictionary with keys as tuples of base sample names (str, str), sorted
-            alphabetically, and values as the highest similarity score observed between
-            any pair of samples from those base names.
-        dict: A dictionary with keys as tuples of original sample names (str, str) that meet or exceed
-            the specified threshold, and values as their corresponding similarity scores.
-
-    Notes:
-        - Only between-sample comparisons are included (i.e., pairs with different base names).
-        - For each unique pair of base sample names, only the maximum similarity value is kept.
-        - The base sample name is defined as the portion of the sample name before the last underscore.
-    """
-    #initialize a new dictionary to store our values 
+    #initiailize results dicitonaries
+    within_sample_dict = {}
     between_sample_dict = {}
     haplotype_linkage_dict = {}
-    for (sample_1,sample_2),value in threshold_dict.items():
-        #clean the sample names to just use the base name (everything before the last underscore
-        sample_1_base = sample_1.rsplit('_', 1)[0]
-        sample_2_base = sample_2.rsplit('_', 1)[0]
-        #only do comparisons between samples not within samples
-        if sample_1_base == sample_2_base:
-            continue # skipping same sample comparison 
-        
-        #sort keys in more efficient manner
-        if sample_1_base < sample_2_base:
-            new_key = (sample_1_base, sample_2_base)
-            inner_key = (sample_1, sample_2)
-        else:
-            new_key = (sample_2_base, sample_1_base)
-            inner_key = (sample_2, sample_1)
-            
-        #keep max similarity value for each sample pair
-        if value > between_sample_dict.get(new_key, -float('inf')):
-            between_sample_dict[new_key] = value
-            if value >= threshold:
-                inner_key+= (value,)
-                haplotype_linkage_dict[new_key] = inner_key
-                
-    return between_sample_dict, haplotype_linkage_dict  
 
-def get_similarity_values(sample_search_results, sample_kmer_counts, hash_table):
-    """
-    Calculate the similarity values between samples based on k-mer counts and a given threshold.
-
-    Args:
-        sample_search_results (dict): A dictionary where keys are primary sample IDs and values are dictionaries 
-                                          of hit sample IDs and their respective k-mer hit counts.
-        sample_kmer_counts (dict): A dictionary where keys are sample IDs and values are their respective total k-mer counts.
-        hash_table (object): An object that contains the method get_sample_id_counts() which returns a dictionary of sample IDs 
-                                 and their respective total k-mer counts.
-        threshold (int, optional): The minimum percentage similarity required to include the sample pair in the result. 
-                                       Defaults to 50.
-
-    Returns:
-        dict: A dictionary where keys are tuples of (primary_sample, hit_sample) and values are the percentage similarity 
-                  between the primary sample and the hit sample, only including pairs that meet or exceed the threshold.
-    """
-    id_counts = hash_table.get_sample_id_counts()
-    #create a new threshold dictionary to store samples who meet the threshold 
-    threshold_dict = {}  
-    for primary_sample, search_results in sample_search_results.items():
-        #get the kmer total for the primary sample
-        primary_sample_kmer_count = sample_kmer_counts[primary_sample]
-        #iterate over all the hits that we got in the hash table 
-        for hit_sample, hit_counts in search_results.items():
-            #get the total counts for sample hit from the hash table
-            hit_sample_kmer_count = id_counts[hit_sample]
-            #calculate the total unique kmer counts between our primary and hit sample 
-            total_unique_counts = (primary_sample_kmer_count + hit_sample_kmer_count) - hit_counts
-            #calculate the percent simliitariy and round to three decimal places
-            percent_similarity = round(((hit_counts / total_unique_counts) * 100),3)
-            #if the percent similarity is greater than the threshold, store it in a new dictionary
-            #if percent_similarity >= threshold:
-            threshold_dict[(primary_sample, hit_sample)] = percent_similarity
-    return threshold_dict
-def compare_samples(hash_table,samples_dir_to_compare,kmer_size):
-    """
-    Compare samples in a given directory against a hash table of kmers.
-    Args:
-        hash_table (object): An object that supports a `search` method for kmers.
-        samples_dir_to_compare (str): Path to the directory containing sample fasta files.
-    Returns:
-        tuple: A tuple containing two dictionaries:
-            - sample_search_results (dict): A dictionary where keys are sample names and values are dictionaries 
-                of other samples and their respective kmer counts.
-            - sample_kmer_counts (dict): A dictionary where keys are sample names and values are the counts of kmers 
-                for each haplotype in the sample.
-    Notes:
-        - Only fasta files (with extensions .fasta or .fa) in the samples directory are processed.
-        - The sample name is constructed from the fasta file name and haplotype number.
-        - The function does not store search results for the current sample if it is found in the hash table.
-        """
-    #create dictionary to store what toher samples each kmer belonged too for each haplotype
-    sample_search_results = {}
-    #create a dictionary to store the kmer coutns for each haplotype for each sample
-    sample_kmer_counts = {}
-    #iterate over the samples directory 
+    #iterate over the fastas directory
     for fasta in os.listdir(samples_dir_to_compare):
-        #only process fasta files
-        if fasta.endswith(".fasta") or fasta.endswith(".fa"):
-            fasta_name = fasta.split('.')[0]
-            #get the genotype 
-            genotype = fasta_name.split('-')[-1]
-            fasta_path = os.path.join(samples_dir_to_compare, fasta)
-            seq_list = [str(record.seq) for record in SeqIO.parse(fasta_path, "fasta")]
-            #get the kmers for the sample
-            k_mer_sets, num_sequences = produce_kmers(seq_list,k_mer=kmer_size)
-            #set the unique haplotype number
-            haplotype_number = 0
-            #now iterate through each set of kmers
-            for kmer_set in k_mer_sets:
-                #create a temp dictionary to store the search results
-                temp_dict = {}
-                kmer_count=0
-                #create the sample name 
-                sample_name = f"{fasta_name}_{haplotype_number}"
-                #search for each kmer in the hash table
-                for kmer in kmer_set:
-                    #increase the kmer count
-                    kmer_count+=1
-                    result_set = hash_table.search(kmer)
-                    #print(result_set)
-                    #iterate through each sampe name in the results set 
-                    if result_set is not None:
-                        for result in result_set:
-                            #if fasta_name not in result: #this will prevent the current sample from being stored 
-                            if result in temp_dict:
-                                temp_dict[result] += 1
-                            else:
-                                temp_dict[result] = 1
-                #update the respective dictionaries
-                sample_kmer_counts[sample_name] = kmer_count
-                #store the search results in the dictionary
-                sample_search_results[sample_name] = temp_dict
-                #increment the haplotype number     
-                haplotype_number+=1
+        if not (fasta.endswith(".fasta") or fasta.endswith(".fa")):
+            continue
+        
+        #construct the correct fasta path
+        fasta_name = fasta.split('.')[0]
+        fasta_path = os.path.join(samples_dir_to_compare, fasta)
+        #set an intial haplotype number per sequence in the fasta file
+        haplotype_number = 0
+        #iterate through each sequence in the fasta file
+        for record in SeqIO.parse(fasta_path, "fasta"):
+
+            sample_name = f"{fasta_name}_{haplotype_number}"
+            primary_base = sample_name.rsplit('_', 1)[0]
+
+            #contains the number of shared kmers per individual sequences iterate through in the fasta
+            temp_counter = Counter()
+            kmer_count = 0
+            seen_kmers = set() # Keep track of unique kmers to avoid double counting
+
+            # Stream kmers (no sets stored)
+            for kmer in iter_kmers(str(record.seq), kmer_size):
+                if kmer in seen_kmers:
+                    continue  # Skip already seen kmer
+                seen_kmers.add(kmer)
+                kmer_count += 1
+                result_set = hash_table.search(kmer)
+                #count the shared kmers
+                if result_set:
+                    for result in result_set:
+                        temp_counter[result] += 1
+            
+            #compute percent similarities by iterating through each sample, and the shared number of kmers
+            for hit_sample, hit_counts in temp_counter.items():
+                #get the base sample name 
+                hit_base = hit_sample.rsplit('_', 1)[0]
+                hit_sample_kmer_count = id_counts.get(hit_sample,0)
+                #calculate total unique counts 
+                total_unique_counts = (
+                    kmer_count + hit_sample_kmer_count - hit_counts
+                )
+                #calculate the percent similarity 
+                percent_similarity = round((hit_counts / total_unique_counts) * 100, 3)
+                
+                ### WITHIN SAMPLE ###
+                if primary_base == hit_base:
+                    if sample_name == hit_sample:
+                        continue #Skip self comparisons, they will obviously be 100% similiar
+                    key = tuple(sorted([sample_name, hit_sample]))
+                    within_sample_dict[key] = percent_similarity
                     
-    #return the dictionaries
-    return sample_search_results, sample_kmer_counts
+                ### BETWEEN SAMPLE ###
+                else:
+                    #alphabetical order the sample pair key
+                    sample_pair_key =  (primary_base,hit_base 
+                                        ) if primary_base < hit_base else (hit_base,primary_base)
+                    
+                    #check if this is the best similiarty so far for this pair 
+                    if percent_similarity > between_sample_dict.get(sample_pair_key,-1):
+                        between_sample_dict[sample_pair_key] = percent_similarity
+                        #check if the percent similarity meets the linkage threshold
+                        if percent_similarity >= linkage_threshold:
+                            #store the best haplotype pair as the key, alphabetically ordered
+                            haplotype_key = (sample_name, hit_sample
+                                             ) if sample_name < hit_sample else (hit_sample, sample_name)
+                            haplotype_linkage_dict[sample_pair_key] = ( haplotype_key, percent_similarity)
+                            
+                  
+            #increase the haplotype number for the next sequence
+            haplotype_number += 1
+            #remove temporary variables to reset for next sequence
+            del temp_counter
+            del seen_kmers
+            
+    haplotype_linkage_dict = {v[0]: v[1] for v in haplotype_linkage_dict.values()}
+    return within_sample_dict, between_sample_dict, haplotype_linkage_dict
+
 #function to run the hash table initialization and key insertion
 def update_table(previous_hash_table, samples_dir_to_add, new_hash_table_name, save_table,kmer_size):
     """
@@ -514,13 +423,7 @@ def main(argv=None):
     if args.samples_dir_to_compare is not None:
         print("Comparing samples in specified directory to hash table")
         logging.info(f"Using a linkage_threshold of : {args.linkage_threshold}")
-        sample_search_results, sample_kmer_counts = compare_samples(hash_table, args.samples_dir_to_compare, args.kmer_size)
-        #get the similarity values
-        similarity_dict = get_similarity_values(sample_search_results,sample_kmer_counts,hash_table)
-        #get the within sample similarity values
-        within_sample_dict = get_within_sample_values(similarity_dict)
-        #get the between sample similarity values 
-        between_sample_dict,haplotype_linkage_dict = get_between_sample_values(similarity_dict,args.linkage_threshold)
+        within_sample_dict, between_sample_dict, haplotype_linkage_dict = compare_and_compute_similarities(hash_table, args.samples_dir_to_compare, args.kmer_size, args.linkage_threshold)
         #generate the dataframes
         between_samples_df = pd.DataFrame(
             [(primary_sample, hit_sample, percent_similarity) for (primary_sample, hit_sample), percent_similarity in between_sample_dict.items()],
@@ -531,15 +434,13 @@ def main(argv=None):
                     columns=["sample_1", "sample_2", "percent_similarity"]
         )
         haplotype_linkage_df = pd.DataFrame(
-            [(sample_1_base, sample_2_base, sample_1, sample_2, percent_similarity) for (sample_1_base, sample_2_base), (sample_1,sample_2,percent_similarity) in haplotype_linkage_dict.items()],
-                    columns=["sample_1_base", "sample_2_base", "sample_1", "sample_2", "percent_similarity"]
+            [(sample_1, sample_2, percent_similarity) for (sample_1,sample_2),percent_similarity in haplotype_linkage_dict.items()],
+                    columns=["sample_1", "sample_2", "percent_similarity"]
         )
         #sort values by percent similarity for the three dataframes
         between_samples_df = between_samples_df.sort_values(by=["percent_similarity", "sample_1","sample_2"], ascending=False)
         within_samples_df = within_samples_df.sort_values(by=["percent_similarity", "sample_1","sample_2"], ascending=False)
         haplotype_linkage_df = haplotype_linkage_df.sort_values(by=["percent_similarity", "sample_1","sample_2"], ascending=False)
-        #drop sample_1_base and sample_2_base columns
-        haplotype_linkage_df = haplotype_linkage_df.drop(columns=["sample_1_base", "sample_2_base"])
         #save the two dataframes
         between_samples_df.to_csv('between_sample_percent_similarities.csv',index=False)
         within_samples_df.to_csv('within_sample_percent_similarities.csv',index=False)
