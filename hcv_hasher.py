@@ -213,21 +213,24 @@ def iterate_over_samples(samples_dir, hash_table,kmer_size):
         if filename.endswith(".fasta") or filename.endswith(".fa"):
             filepath = os.path.join(samples_dir, filename)
             fasta_name = filename.split('.')[0]
-            seq_list = [str(record.seq) for record in SeqIO.parse(filepath, "fasta")]
-            print(f"Processing {fasta_name} with {len(seq_list)} sequences.")
-            #produce the kmer sets
-            k_mer_sets, num_sequences = produce_kmers(seq_list,k_mer=kmer_size)
+            records = list(SeqIO.parse(filepath, "fasta"))
+            print(f"Processing {fasta_name} with {len(records)} sequences.")
             #set the unique haplotype number
             haplotype_number = 0
-            #now iterate through each set of kmers
-            for kmer_set in k_mer_sets:
+            #iterate through each sequence in the fasta
+            for record in records:
                 #create the sample name 
                 sample_name = f"{fasta_name}_{haplotype_number}"
-                #add each kmer to the hash table
-                for kmer in kmer_set:
+                #track seen kmers to prevent double counting
+                seen_kmers = set()
+                #add each unique kmer to the hash table
+                for kmer in iter_kmers(str(record.seq), kmer_size):
+                    if kmer in seen_kmers:
+                        continue
+                    seen_kmers.add(kmer)
                     hash_table.insert(kmer, sample_name)
                 #increment the haplotype number
-                haplotype_number+=1
+                haplotype_number += 1
             #after every sample added check the load size
             filled,empty_slots = hash_table.count_filled()
             print(f"filled: {filled}, empty_slots: {empty_slots}")
@@ -253,6 +256,13 @@ def iter_kmers(seq, k):
     for i in range(len(seq) - k + 1):
         yield seq[i:i+k]
 
+GLOBAL_HASH_TABLE = None
+GLOBAL_ID_COUNTS = None
+
+def init_worker(hash_table, id_counts):
+    global GLOBAL_HASH_TABLE, GLOBAL_ID_COUNTS
+    GLOBAL_HASH_TABLE = hash_table
+    GLOBAL_ID_COUNTS = id_counts
 def process_single_fasta(args):
     """
     Iterate overa single fasta file and compute the within sample and between sample similiarties for each sequence/haplotype in the fasta
@@ -273,12 +283,8 @@ def process_single_fasta(args):
             - haplotype_linkage_dict (dict): A dictionary with keys as tuples of sample pairs and values as tuples containing the best haplotype pair and their percent similarity for potentially linked samples.
     """
     # unpack the arguments passed from the the multiprocessing call
-    (fasta,
-     samples_dir,
-     hash_table,
-     kmer_size,
-     linkage_threshold,
-     id_counts) = args
+    (fasta, samples_dir, kmer_size, linkage_threshold) = args
+    
 
     # initialize results dictionaries
     within_sample_dict = {}
@@ -309,7 +315,7 @@ def process_single_fasta(args):
             seen_kmers.add(kmer)
             kmer_count += 1
             #find the sample that share the current kmer
-            result_set = hash_table.search(kmer)
+            result_set = GLOBAL_HASH_TABLE.search(kmer)
             #for each sample, count shared kmers
             if result_set:
                 for result in result_set:
@@ -319,7 +325,7 @@ def process_single_fasta(args):
             #get the base sample name for hit sample
             hit_base = hit_sample.rsplit('_',1)[0]
             #get the number of unique kmers in the matched haplotype
-            hit_sample_kmer_count = id_counts.get(hit_sample,0)
+            hit_sample_kmer_count = GLOBAL_ID_COUNTS.get(hit_sample,0)
             #calculate the union size of unique kmers between the two haplotypes
             total_unique_counts = (kmer_count + hit_sample_kmer_count - hit_counts)
             #calculate the percent similiarity (jaccard index)
@@ -381,17 +387,17 @@ def compare_and_compute_similarities(hash_table,
     #prepare an argument list containing a tuple per fasta file
     args_list = [( fasta,
                 samples_dir_to_compare,
-                hash_table,
                 kmer_size,
-                linkage_threshold,
-                id_counts)
+                linkage_threshold)
                 for fasta in fasta_files]
     #initiailzie final dictionaries to store results
     within_sample_dict = {}
     between_sample_dict = {}
     haplotype_linkage_dict = {}
     #run processing parallel (one fasta per worker)
-    with Pool(cpu_count()) as pool:
+    with Pool(cpu_count(),
+          initializer=init_worker,
+          initargs=(hash_table,id_counts)) as pool:
         results = pool.map(process_single_fasta, args_list)
 
     ### Merge results from each worker into the final dictionaries ###
