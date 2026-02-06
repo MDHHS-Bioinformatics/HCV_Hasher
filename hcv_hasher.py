@@ -16,7 +16,9 @@ import os
 import pickle
 import argparse
 import logging
-from collections import Counter 
+from collections import Counter
+from multiprocessing import Pool, cpu_count
+ 
 
 logging.basicConfig(level=logging.INFO, format='%(asctime)s - %(levelname)s - %(message)s')
 
@@ -240,99 +242,181 @@ def iterate_over_samples(samples_dir, hash_table,kmer_size):
     return hash_table
 
 def iter_kmers(seq, k):
+    """
+    Generator function for iterating over k-mers in a given sequence.
+    Args:
+        seq (str): The input sequence from which to generate k-mers.
+        k (int): The length of the k-mers to generate.
+    Yields:
+        str: The next k-mer in the sequence.
+    """
     for i in range(len(seq) - k + 1):
         yield seq[i:i+k]
 
-def compare_and_compute_similarities(hash_table,samples_dir_to_compare,kmer_size,linkage_threshold):
+def process_single_fasta(args):
     """
-    Memory-efficient combined comparison + similarity computation.
+    Iterate overa single fasta file and compute the within sample and between sample similiarties for each sequence/haplotype in the fasta
+
+    Args:
+        (args): A tuple containing the following elements:
+            fasta (str): The name of the fasta file to process.
+            samples_dir (str): The directory containing the fasta file.
+            hash_table (FullHashTable): The hash table to search for k-mers.
+            kmer_size (int): The size of the k-mers to be used in the analysis.
+            linkage_threshold (int): The percent similarity threshold to store specific haplotype linkages.
+            id_counts (dict): A dictionary containing the count of unique k-mers for each sample stored in the FullHashTable.
+
+    Returns:
+        tuple: A tuple containing three dictionaries:
+            - within_sample_dict (dict): A dictionary with keys as tuples of sample pairs and values as their percent similarity for within-sample comparisons.
+            - between_sample_dict (dict): A dictionary with keys as tuples of sample pairs and values as their percent similarity for between-sample comparisons.
+            - haplotype_linkage_dict (dict): A dictionary with keys as tuples of sample pairs and values as tuples containing the best haplotype pair and their percent similarity for potentially linked samples.
     """
+    # unpack the arguments passed from the the multiprocessing call
+    (fasta,
+     samples_dir,
+     hash_table,
+     kmer_size,
+     linkage_threshold,
+     id_counts) = args
 
-    # Precompute total kmer counts from hash table
-    id_counts = hash_table.get_sample_id_counts()
-
-    #initiailize results dicitonaries
+    # initialize results dictionaries
     within_sample_dict = {}
     between_sample_dict = {}
     haplotype_linkage_dict = {}
+    #format sample name and path properly
+    fasta_name = fasta.split('.')[0]
+    fasta_path = os.path.join(samples_dir, fasta)
+    #assign starting haplotype
+    haplotype_number = 0
+    #iterate through each haplotype/sequence in the fasta file
+    for record in SeqIO.parse(fasta_path, "fasta"):
+        #create the haplotype name
+        sample_name = f"{fasta_name}_{haplotype_number}"
+        #get just the sample name, stripping away the haplotype name
+        primary_base = sample_name.rsplit('_',1)[0]
+        #store the shared number of kmers with other haplotypes
+        temp_counter = Counter()
+        #track seen kmers to prevent double counting
+        seen_kmers = set()
+        #start unique kmers counts before iterating
+        kmer_count = 0
+        #iterate through the kmers
+        for kmer in iter_kmers(str(record.seq), kmer_size):
+            #if the kmer has already been counted/seen, skip it
+            if kmer in seen_kmers:
+                continue
+            seen_kmers.add(kmer)
+            kmer_count += 1
+            #find the sample that share the current kmer
+            result_set = hash_table.search(kmer)
+            #for each sample, count shared kmers
+            if result_set:
+                for result in result_set:
+                    temp_counter[result] += 1
+        #calculate similarities for each matched haplotype
+        for hit_sample, hit_counts in temp_counter.items():
+            #get the base sample name for hit sample
+            hit_base = hit_sample.rsplit('_',1)[0]
+            #get the number of unique kmers in the matched haplotype
+            hit_sample_kmer_count = id_counts.get(hit_sample,0)
+            #calculate the union size of unique kmers between the two haplotypes
+            total_unique_counts = (kmer_count + hit_sample_kmer_count - hit_counts)
+            #calculate the percent similiarity (jaccard index)
+            percent_similarity = round((hit_counts / total_unique_counts) * 100, 3)
+            ### WITHIN SAMPLE ###
+            if primary_base == hit_base:
+                #skip self comparisons
+                if sample_name == hit_sample:
+                    continue
+                #Create consistent ordering of pairs
+                key = tuple(sorted([sample_name, hit_sample]))
+                within_sample_dict[key] = percent_similarity
+            ### BETWEEN SAMPLE ###
+            else:
+                #create sample pair alphabetically
+                sample_pair_key = (primary_base,hit_base
+                ) if primary_base < hit_base else (hit_base,primary_base)
+                #only keep the highest percent similiarity between two samples
+                if percent_similarity > between_sample_dict.get(sample_pair_key,-1):
+                    between_sample_dict[sample_pair_key] = percent_similarity
+                    #Check if the percent simliarites are greater than the threshold
+                    if percent_similarity >= linkage_threshold:
+                        #create haplotype pair alphabetically
+                        haplotype_key = (sample_name,hit_sample
+                            ) if sample_name < hit_sample else (hit_sample,sample_name)
+                        #store linkage pair
+                        haplotype_linkage_dict[sample_pair_key] = (haplotype_key,percent_similarity)
+        #increase the haplotype number for the next sequence
+        haplotype_number += 1
+    #return tuple of each of the dictoinaries in a tuple for the multiprocessing worker
+    return (within_sample_dict, between_sample_dict, haplotype_linkage_dict)
 
-    #iterate over the fastas directory
-    for fasta in os.listdir(samples_dir_to_compare):
-        if not (fasta.endswith(".fasta") or fasta.endswith(".fa")):
-            continue
-        
-        #construct the correct fasta path
-        fasta_name = fasta.split('.')[0]
-        fasta_path = os.path.join(samples_dir_to_compare, fasta)
-        #set an intial haplotype number per sequence in the fasta file
-        haplotype_number = 0
-        #iterate through each sequence in the fasta file
-        for record in SeqIO.parse(fasta_path, "fasta"):
+def compare_and_compute_similarities(hash_table,
+                                     samples_dir_to_compare,
+                                     kmer_size,
+                                     linkage_threshold):
+    """
+    Compare samples in the input directory to the hash table and compute the within and between sample percent simliarties. Also look for potential linkages.
+    
+    Args:
+        hash_table (FullHashTable): The hash table to search for k-mers.
+        samples_dir_to_compare (str): The directory containing the fasta files to compare.
+        kmer_size (int): The size of the k-mers to be used in the analysis.
+        linkage_threshold (int): The percent similarity threshold to store specific haplotype linkages
+    Returns:
+        tuple: A tuple containing three dictionaries:
+            - within_sample_dict (dict): A dictionary with keys as tuples of sample pairs and values as their percent similarity for within-sample comparisons.
+            - between_sample_dict (dict): A dictionary with keys as tuples of sample pairs and values as their percent similarity for between-sample comparisons.
+            - haplotype_linkage_dict (dict): A dictionary with keys as tuples of sample pairs and values as tuples containing the best haplotype pair and their percent similarity for potentially linked samples.
+    """
 
-            sample_name = f"{fasta_name}_{haplotype_number}"
-            primary_base = sample_name.rsplit('_', 1)[0]
+    #get the total unique kmers for all haplotypes in the hash table
+    id_counts = hash_table.get_sample_id_counts()
 
-            #contains the number of shared kmers per individual sequences iterate through in the fasta
-            temp_counter = Counter()
-            kmer_count = 0
-            seen_kmers = set() # Keep track of unique kmers to avoid double counting
+    #collect all fasta files from the input directory
+    fasta_files = [ f for f in os.listdir(samples_dir_to_compare)
+                   if f.endswith(".fasta") or f.endswith(".fa") ]
 
-            # Stream kmers (no sets stored)
-            for kmer in iter_kmers(str(record.seq), kmer_size):
-                if kmer in seen_kmers:
-                    continue  # Skip already seen kmer
-                seen_kmers.add(kmer)
-                kmer_count += 1
-                result_set = hash_table.search(kmer)
-                #count the shared kmers
-                if result_set:
-                    for result in result_set:
-                        temp_counter[result] += 1
-            
-            #compute percent similarities by iterating through each sample, and the shared number of kmers
-            for hit_sample, hit_counts in temp_counter.items():
-                #get the base sample name 
-                hit_base = hit_sample.rsplit('_', 1)[0]
-                hit_sample_kmer_count = id_counts.get(hit_sample,0)
-                #calculate total unique counts 
-                total_unique_counts = (
-                    kmer_count + hit_sample_kmer_count - hit_counts
-                )
-                #calculate the percent similarity 
-                percent_similarity = round((hit_counts / total_unique_counts) * 100, 3)
-                
-                ### WITHIN SAMPLE ###
-                if primary_base == hit_base:
-                    if sample_name == hit_sample:
-                        continue #Skip self comparisons, they will obviously be 100% similiar
-                    key = tuple(sorted([sample_name, hit_sample]))
-                    within_sample_dict[key] = percent_similarity
-                    
-                ### BETWEEN SAMPLE ###
-                else:
-                    #alphabetical order the sample pair key
-                    sample_pair_key =  (primary_base,hit_base 
-                                        ) if primary_base < hit_base else (hit_base,primary_base)
-                    
-                    #check if this is the best similiarty so far for this pair 
-                    if percent_similarity > between_sample_dict.get(sample_pair_key,-1):
-                        between_sample_dict[sample_pair_key] = percent_similarity
-                        #check if the percent similarity meets the linkage threshold
-                        if percent_similarity >= linkage_threshold:
-                            #store the best haplotype pair as the key, alphabetically ordered
-                            haplotype_key = (sample_name, hit_sample
-                                             ) if sample_name < hit_sample else (hit_sample, sample_name)
-                            haplotype_linkage_dict[sample_pair_key] = ( haplotype_key, percent_similarity)
-                            
-                  
-            #increase the haplotype number for the next sequence
-            haplotype_number += 1
-            #remove temporary variables to reset for next sequence
-            del temp_counter
-            del seen_kmers
-            
-    haplotype_linkage_dict = {v[0]: v[1] for v in haplotype_linkage_dict.values()}
+    #prepare an argument list containing a tuple per fasta file
+    args_list = [( fasta,
+                samples_dir_to_compare,
+                hash_table,
+                kmer_size,
+                linkage_threshold,
+                id_counts)
+                for fasta in fasta_files]
+    #initiailzie final dictionaries to store results
+    within_sample_dict = {}
+    between_sample_dict = {}
+    haplotype_linkage_dict = {}
+    #run processing parallel (one fasta per worker)
+    with Pool(cpu_count()) as pool:
+        results = pool.map(process_single_fasta, args_list)
+
+    ### Merge results from each worker into the final dictionaries ###
+    for w, b, h in results:
+        #merge within-sample similarities directly
+        within_sample_dict.update(w)
+        #Keep best simliarity per sample pair
+        for k,v in b.items():
+            if v > between_sample_dict.get(k,-1):
+                between_sample_dict[k] = v
+        #keep best haplotype pair per sample pair
+        for k,v in h.items():
+            if v[1] >= haplotype_linkage_dict.get(k,(None,-1))[1]:
+                haplotype_linkage_dict[k] = v
+    #conver from :
+    #{sample_pair : ((haplotype_1,hapltype_2),percent_similarity)}
+    #to: 
+    #{(haplotype_1,hapltype_2):percent_similarity}
+    haplotype_linkage_dict = {
+        v[0]: v[1]
+        for v in haplotype_linkage_dict.values()
+    }
+
     return within_sample_dict, between_sample_dict, haplotype_linkage_dict
+
 
 #function to run the hash table initialization and key insertion
 def update_table(previous_hash_table, samples_dir_to_add, new_hash_table_name, save_table,kmer_size):
