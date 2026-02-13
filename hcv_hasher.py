@@ -5,7 +5,6 @@
 
 __version__ = "1.0.3"
 
-import mmh3  # MurmurHash3 for hashing
 import pandas as pd 
 from Bio import AlignIO
 from Bio import SeqIO
@@ -17,6 +16,7 @@ import pickle
 import argparse
 import logging
 from collections import Counter
+from collections import defaultdict
 from multiprocessing import Pool, cpu_count
  
 
@@ -24,174 +24,123 @@ logging.basicConfig(level=logging.INFO, format='%(asctime)s - %(levelname)s - %(
 
 class FullHashTable:
     """
-    A class to represent a hash table for storing k-mer information with associated sample IDs.
+    Dictionary-backed k-mer index.
+    Stores:
+        {encoded_kmer_int : set(sample_ids)}
     """
 
-    def __init__(self, size):
-        """
-        Initialize the hash table with a given size.
-
-        Parameters:
-        size (int): The size of the hash table.
-        """
+    def __init__(self, size=None):
+        # size retained only for backward compatibility
         self.size = size
-        self.table = np.full(size, None, dtype=object)  # Store (key, sample_id_set) tuples
+        self.table = defaultdict(set)
 
     def insert(self, key, sample_id):
         """
-        Insert a key-value pair into the hash table.
-
-        Parameters:
-        key (str): The k-mer to be inserted.
-        sample_id (str): The sample ID associated with the k-mer.
+        Insert a k-mer and associated sample ID.
         """
-        full_hash = mmh3.hash(key, signed=False)  # Compute full 32-bit MurmurHash3
-        index = full_hash % self.size  # Compute index using modulo operation
-
-        # Linear probing for collision resolution
-        while self.table[index] is not None:
-            stored_key, stored_sample_ids = self.table[index]
-            if stored_key == key:
-                stored_sample_ids.add(sample_id)  # Add sample_id if key already exists
-                return
-            index = (index + 1) % self.size  # Move to the next index
-
-        # Store key and associated sample_id set
-        self.table[index] = (key, {sample_id})  
+        self.table[key].add(sample_id)
 
     def search(self, key):
         """
-        Search for a key in the hash table and return the associated sample IDs.
-
-        Parameters:
-        key (str): The k-mer to search for.
-
-        Returns:
-        set: A set of sample IDs associated with the k-mer, or None if the key is not found.
+        Return set of sample IDs associated with k-mer.
         """
-        full_hash = mmh3.hash(key, signed=False)
-        index = full_hash % self.size
-
-        # Linear probing for search
-        while self.table[index] is not None:
-            stored_key, stored_sample_ids = self.table[index]
-            if stored_key == key:  # Fix: Compare key directly
-                return stored_sample_ids  # Return the set of taxonomic IDs
-            index = (index + 1) % self.size
-        return None  # Key not found
+        return self.table.get(key, None)
 
     def resize(self, new_size):
         """
-        Resize the hash table and rehash all elements.
-
-        Parameters:
-        new_size (int): The new size of the hash table.
+        No-op retained for compatibility with old workflow.
+        Dicts resize automatically.
         """
-        temp_hash_table = FullHashTable(new_size)  # Create a new hash table
-        for entry in self.table:
-            if entry is not None:
-                key, sample_ids = entry
-                for sample_id in sample_ids:  
-                    temp_hash_table.insert(key, sample_id)  # Reinsert correctly
-        # Update to new table
-        self.size = temp_hash_table.size
-        self.table = temp_hash_table.table
+        self.size = new_size
 
     def count_filled(self):
         """
-        Count the number of filled and empty slots in the hash table.
-
-        Returns:
-        tuple: A tuple containing the number of filled slots and empty slots.
+        Count number of unique kmers stored.
         """
-        filled = sum(1 for entry in self.table if entry is not None)
-        empty = self.size - filled
+        filled = len(self.table)
+        empty = 0
         return filled, empty
 
     def save_table(self, filename):
         """
-        Save the hash table to a file using pickle.
-
-        Parameters:
-        filename (str): The name of the file to save the hash table to.
+        Save hash table to file.
         """
         with open(filename, "wb") as f:
-            pickle.dump((self.size, self.table), f)
+            pickle.dump((self.size, dict(self.table)), f)
         print(f"Hash table saved to {filename}")
 
     @staticmethod
     def load_table(filename):
         """
-        Load a hash table from a file.
-
-        Parameters:
-        filename (str): The name of the file to load the hash table from.
-
-        Returns:
-        FullHashTable: The loaded hash table.
+        Load hash table from file.
+        Supports both:
+            - old numpy array table format
+            - new dict-based table format
         """
+        from collections import defaultdict
+        import numpy as np
+
         with open(filename, "rb") as f:
             size, table = pickle.load(f)
+
         new_ht = FullHashTable(size)
-        new_ht.table = table
+
+        # ✅ Case 1: already new dict format
+        if isinstance(table, dict):
+            new_ht.table = defaultdict(set, table)
+
+        # ✅ Case 2: old numpy array format
+        elif isinstance(table, np.ndarray):
+            new_table = defaultdict(set)
+
+            for entry in table:
+                if entry is None:
+                    continue
+                key, sample_ids = entry
+                new_table[key].update(sample_ids)
+
+            new_ht.table = new_table
+
+        # ✅ fallback generic iterable of tuples
+        else:
+            new_table = defaultdict(set)
+            for key, sample_ids in table:
+                new_table[key].update(sample_ids)
+            new_ht.table = new_table
+
         print(f"Hash table loaded from {filename}")
         return new_ht
 
     def get_sample_id_counts(self):
         """
-        Count occurrences of each sample ID in the hash table.
-
-        Returns:
-        dict: A dictionary with sample IDs as keys and their counts as values.
+        Count number of unique kmers per sample ID.
         """
         sample_id_counts = {}
-        for entry in self.table:
-            if entry is not None:
-                _, sample_ids = entry
-                for sample_id in sample_ids:
-                    sample_id_counts[sample_id] = sample_id_counts.get(sample_id, 0) + 1
+
+        for sample_ids in self.table.values():
+            for sample_id in sample_ids:
+                sample_id_counts[sample_id] = (
+                    sample_id_counts.get(sample_id, 0) + 1
+                )
+
         return sample_id_counts
 
     def get_sample_id_counts_df(self):
         """
-        Return a DataFrame with sample IDs and their respective counts.
-
-        Returns:
-        pandas.DataFrame: A DataFrame with columns "sample_id" and "counts".
+        Return DataFrame with sample ID counts.
         """
         sample_id_counts = self.get_sample_id_counts()
-        return pd.DataFrame(list(sample_id_counts.items()), columns=["sample_id", "counts"])
+        return pd.DataFrame(
+            list(sample_id_counts.items()),
+            columns=["sample_id", "counts"]
+        )
 
     def display_table(self):
         """
-        Display the contents of the hash table.
+        Print table contents.
         """
-        print(self.table)
-        
-# Produce a list of k-mer sets for each sequence in the input list
-def produce_kmers(seq_list, k_mer=25):
-    """
-    Generate k-mers for each sequence in the provided list.
+        print(dict(self.table))
 
-    Args:
-        seq_list (list of str): List of sequences to process.
-        k_mer (int, optional): Length of the k-mers to generate. Default is 25.
-
-    Returns:
-        tuple: A tuple containing:
-            - list of set: A list where each element is a set of k-mers for the corresponding sequence.
-            - int: The total number of sequences processed.
-    """
-    k_mer_sets = []  # List to hold sets of k-mers for each sequence
-    # Iterate over each sequence in the list
-    for seq in seq_list:
-        k_mer_set = set()  # Create a new set for the current sequence
-        for i in range(len(seq) - k_mer + 1):
-            k_mer_set.add(seq[i:i + k_mer])
-        k_mer_sets.append(k_mer_set)  # Append the set to the list
-    #print(f"Total sequences processed: {len(k_mer_sets)}")
-    #return the total sequences as well
-    return k_mer_sets, len(k_mer_sets)
 
 def iterate_over_samples(samples_dir, hash_table,kmer_size):
     """
@@ -231,30 +180,37 @@ def iterate_over_samples(samples_dir, hash_table,kmer_size):
                     hash_table.insert(kmer, sample_name)
                 #increment the haplotype number
                 haplotype_number += 1
-            #after every sample added check the load size
-            filled,empty_slots = hash_table.count_filled()
-            print(f"filled: {filled}, empty_slots: {empty_slots}")
-            load_factor = filled/(filled + empty_slots)
-            print(f"Load factor: {load_factor}")
-            #if the filled slots are greater than 65% of the total size, resize the table
-            if load_factor > 0.65:
-                print("Resizing hash table...")
-                hash_table.resize(hash_table.size * 2)
-                print(f"Table resized to {hash_table.size}")
     print("\nAll samples processed and added to hash table")
     return hash_table
 
 def iter_kmers(seq, k):
     """
-    Generator function for iterating over k-mers in a given sequence.
-    Args:
-        seq (str): The input sequence from which to generate k-mers.
-        k (int): The length of the k-mers to generate.
-    Yields:
-        str: The next k-mer in the sequence.
+    Rolling 3-bit integer encoder.
+    Keeps ambiguous bases as part of k-mers.
+    No resets.
     """
-    for i in range(len(seq) - k + 1):
-        yield seq[i:i+k]
+    BASE3BIT = {
+    "A": 0,
+    "C": 1,
+    "G": 2,
+    "T": 3,
+    "N": 4,
+    "0": 4,
+    "-": 5
+    }
+    mask = (1 << (3 * k)) - 1
+    val = 0
+    length = 0
+
+    for base in seq.upper():
+        code = BASE3BIT.get(base, 4)  # unknowns → N
+
+        val = ((val << 3) | code) & mask
+        length += 1
+
+        if length >= k:
+            yield val
+
 
 GLOBAL_HASH_TABLE = None
 GLOBAL_ID_COUNTS = None
@@ -318,8 +274,7 @@ def process_single_fasta(args):
             result_set = GLOBAL_HASH_TABLE.search(kmer)
             #for each sample, count shared kmers
             if result_set:
-                for result in result_set:
-                    temp_counter[result] += 1
+                temp_counter.update(result_set)
         #calculate similarities for each matched haplotype
         for hit_sample, hit_counts in temp_counter.items():
             #get the base sample name for hit sample
