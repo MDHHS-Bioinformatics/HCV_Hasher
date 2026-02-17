@@ -18,6 +18,8 @@ import logging
 from collections import Counter
 from collections import defaultdict
 from multiprocessing import Pool, cpu_count
+from tqdm import tqdm
+
  
 
 logging.basicConfig(level=logging.INFO, format='%(asctime)s - %(levelname)s - %(message)s')
@@ -318,24 +320,43 @@ def compare_and_compute_similarities(hash_table,
     within_sample_dict = {}
     between_sample_dict = {}
     haplotype_linkage_dict = {}
-    #run processing parallel (one fasta per worker)
+    # Run processing in parallel (one FASTA file per worker process)
     with Pool(cpu_count(),
-          initializer=init_worker,
-          initargs=(hash_table,id_counts)) as pool:
-        results = pool.map(process_single_fasta, args_list)
+            initializer=init_worker,        # initialize global hash table + ID counts once per worker
+            initargs=(hash_table, id_counts)) as pool:
 
-    ### Merge results from each worker into the final dictionaries ###
-    for w, b, h in results:
-        #merge within-sample similarities directly
-        within_sample_dict.update(w)
-        #Keep best simliarity per sample pair
-        for k,v in b.items():
-            if v > between_sample_dict.get(k,-1):
-                between_sample_dict[k] = v
-        #keep best haplotype pair per sample pair
-        for k,v in h.items():
-            if v[1] >= haplotype_linkage_dict.get(k,(None,-1))[1]:
-                haplotype_linkage_dict[k] = v
+        # Iterate over completed FASTA jobs as they finish
+        # imap_unordered yields results immediately when a worker completes
+        # tqdm wraps the iterator to display a progress bar
+        for w, b, h in tqdm(
+                pool.imap_unordered(process_single_fasta, args_list),
+                total=len(args_list),          # total number of FASTA files to process
+                desc="Processing FASTAs",     # progress bar label
+                unit="fasta"):                # unit displayed in progress bar
+
+            ### MERGE WITHIN-SAMPLE RESULTS ###
+            # w is the within_sample_dict returned from one worker
+            # safe to update directly because keys are haplotype pairs
+            within_sample_dict.update(w)
+
+            ### MERGE BETWEEN-SAMPLE RESULTS ###
+            # b is the between_sample_dict returned from one worker
+            # we keep only the highest percent similarity per sample pair
+            for k, v in b.items():
+                # if this similarity is higher than what we’ve seen before, replace it
+                if v > between_sample_dict.get(k, -1):
+                    between_sample_dict[k] = v
+
+            ### MERGE HAPLOTYPE LINKAGE RESULTS ###
+            # h stores:
+            # {sample_pair : ((hap1, hap2), percent_similarity)}
+            # we again keep only the highest percent similarity per sample pair
+            for k, v in h.items():
+                # v[1] is the percent similarity
+                # compare against stored similarity (default = -1 if not yet present)
+                if v[1] >= haplotype_linkage_dict.get(k, (None, -1))[1]:
+                    haplotype_linkage_dict[k] = v
+
     #conver from :
     #{sample_pair : ((haplotype_1,hapltype_2),percent_similarity)}
     #to: 
@@ -344,7 +365,6 @@ def compare_and_compute_similarities(hash_table,
         v[0]: v[1]
         for v in haplotype_linkage_dict.values()
     }
-
     return within_sample_dict, between_sample_dict, haplotype_linkage_dict
 
 
@@ -364,14 +384,13 @@ def update_table(previous_hash_table, samples_dir_to_add, new_hash_table_name, s
     """
     # Load the previous hash table
     hash_table = FullHashTable.load_table(previous_hash_table)
-    print(f"Size of loaded table: {hash_table.size}")
     # Iterate over the samples in the directory
     hash_table = iterate_over_samples(samples_dir_to_add, hash_table,kmer_size)
     # Save the hash table to a file
     if save_table:
         hash_table.save_table(f"{new_hash_table_name}.pkl")
     return hash_table
-def create_new_table(table_size, samples_dir, new_hash_table_name, save_table, kmer_size):
+def create_new_table(samples_dir, new_hash_table_name, save_table, kmer_size):
     """
     Create a new hash table, populate it with data from samples, and optionally save it to a file.
 
@@ -385,7 +404,7 @@ def create_new_table(table_size, samples_dir, new_hash_table_name, save_table, k
         FullHashTable: The populated hash table.
     """
     #create a new hash table
-    hash_table = FullHashTable(table_size)
+    hash_table = FullHashTable()
     #iterate over the samples in the directory
     hash_table = iterate_over_samples(samples_dir, hash_table, kmer_size)
     #save the hashtable to a file
@@ -416,7 +435,7 @@ def main(argv=None):
             logging.error("If --mode is 'initialize', --samples_dir_to_add (path) must be provided.")
             exit(1)
         print("Initialize mode selected: a new hash table will be created from scratch\n")
-        hash_table = create_new_table(args.table_size, args.samples_dir_to_add, args.new_hash_table_name, args.save_table, args.kmer_size)
+        hash_table = create_new_table(args.samples_dir_to_add, args.new_hash_table_name, args.save_table, args.kmer_size)
     elif args.mode == 'update':
         if args.samples_dir_to_add is None:
             logging.error("If --mode is 'update', --samples_dir_to_add (path) must be provided.")
