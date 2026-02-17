@@ -29,9 +29,7 @@ class FullHashTable:
         {encoded_kmer_int : set(sample_ids)}
     """
 
-    def __init__(self, size=None):
-        # size retained only for backward compatibility
-        self.size = size
+    def __init__(self):
         self.table = defaultdict(set)
 
     def insert(self, key, sample_id):
@@ -46,13 +44,6 @@ class FullHashTable:
         """
         return self.table.get(key, None)
 
-    def resize(self, new_size):
-        """
-        No-op retained for compatibility with old workflow.
-        Dicts resize automatically.
-        """
-        self.size = new_size
-
     def count_filled(self):
         """
         Count number of unique kmers stored.
@@ -66,47 +57,25 @@ class FullHashTable:
         Save hash table to file.
         """
         with open(filename, "wb") as f:
-            pickle.dump((self.size, dict(self.table)), f)
+            pickle.dump(dict(self.table), f)
         print(f"Hash table saved to {filename}")
 
     @staticmethod
     def load_table(filename):
         """
         Load hash table from file.
-        Supports both:
-            - old numpy array table format
-            - new dict-based table format
+        Only supports dict-based format.
         """
-        from collections import defaultdict
-        import numpy as np
-
         with open(filename, "rb") as f:
-            size, table = pickle.load(f)
+            table = pickle.load(f)
 
-        new_ht = FullHashTable(size)
+        if not isinstance(table, dict):
+            raise ValueError(
+                "Unsupported table format. Expected dict-based table."
+            )
 
-        # ✅ Case 1: already new dict format
-        if isinstance(table, dict):
-            new_ht.table = defaultdict(set, table)
-
-        # ✅ Case 2: old numpy array format
-        elif isinstance(table, np.ndarray):
-            new_table = defaultdict(set)
-
-            for entry in table:
-                if entry is None:
-                    continue
-                key, sample_ids = entry
-                new_table[key].update(sample_ids)
-
-            new_ht.table = new_table
-
-        # ✅ fallback generic iterable of tuples
-        else:
-            new_table = defaultdict(set)
-            for key, sample_ids in table:
-                new_table[key].update(sample_ids)
-            new_ht.table = new_table
+        new_ht = FullHashTable()
+        new_ht.table = defaultdict(set, table)
 
         print(f"Hash table loaded from {filename}")
         return new_ht
