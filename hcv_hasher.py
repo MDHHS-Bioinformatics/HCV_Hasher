@@ -132,15 +132,12 @@ def iterate_over_samples(samples_dir, hash_table,kmer_size):
     for filename in os.listdir(samples_dir):
         if filename.endswith(".fasta") or filename.endswith(".fa"):
             filepath = os.path.join(samples_dir, filename)
-            fasta_name = filename.split('.')[0]
             records = list(SeqIO.parse(filepath, "fasta"))
-            print(f"Processing {fasta_name} with {len(records)} sequences.")
-            #set the unique haplotype number
-            haplotype_number = 0
-            #iterate through each sequence in the fasta
+            print(f"Processing {filename} with {len(records)} sequences.")
             for record in records:
-                #create the sample name 
-                sample_name = f"{fasta_name}_{haplotype_number}"
+                sample_name = record.id
+                if not sample_name.rsplit('_', 1)[-1].isdigit():
+                    raise ValueError(f"FASTA header '{sample_name}' in '{filename}' does not end with '_N', where N is the haplotype number")
                 #track seen kmers to prevent double counting
                 seen_kmers = set()
                 #add each unique kmer to the hash table
@@ -149,8 +146,6 @@ def iterate_over_samples(samples_dir, hash_table,kmer_size):
                         continue
                     seen_kmers.add(kmer)
                     hash_table.insert(kmer, sample_name)
-                #increment the haplotype number
-                haplotype_number += 1
     print("\nAll samples processed and added to hash table")
     return hash_table
 
@@ -218,16 +213,13 @@ def process_single_fasta(args):
     between_sample_dict = {}
     haplotype_linkage_dict = {}
     #format sample name and path properly
-    fasta_name = fasta.split('.')[0]
     fasta_path = os.path.join(samples_dir, fasta)
-    #assign starting haplotype
-    haplotype_number = 0
     #iterate through each haplotype/sequence in the fasta file
     for record in SeqIO.parse(fasta_path, "fasta"):
-        #create the haplotype name
-        sample_name = f"{fasta_name}_{haplotype_number}"
-        #get just the sample name, stripping away the haplotype name
-        primary_base = sample_name.rsplit('_',1)[0]
+        sample_name = record.id
+        if not sample_name.rsplit('_', 1)[-1].isdigit():
+            raise ValueError(f"FASTA header '{sample_name}' in '{fasta}' does not end with '_N', where N is the haplotype number")
+        primary_base = sample_name.rsplit('_', 1)[0]
         #store the shared number of kmers with other haplotypes
         temp_counter = Counter()
         #track seen kmers to prevent double counting
@@ -279,8 +271,7 @@ def process_single_fasta(args):
                             ) if sample_name < hit_sample else (hit_sample,sample_name)
                         #store linkage pair
                         haplotype_linkage_dict[sample_pair_key] = (haplotype_key,percent_similarity)
-        #increase the haplotype number for the next sequence
-        haplotype_number += 1
+        
     #return tuple of each of the dictoinaries in a tuple for the multiprocessing worker
     return (within_sample_dict, between_sample_dict, haplotype_linkage_dict)
 
