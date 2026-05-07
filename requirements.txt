@@ -1,4 +1,4 @@
 mmh3==5.1.0
 pandas==2.2.3
 biopython==1.85
-numpy==2.2.4
+tqdm==4.66.4

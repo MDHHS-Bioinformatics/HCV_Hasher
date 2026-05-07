@@ -1,7 +1,6 @@
 *test*
 bash_scripts/*
 results*
-ampliseq_implementation/*
 python_notebooks/*
 *.csv
 __pycache__/

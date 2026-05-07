@@ -8,9 +8,6 @@ __version__ = "1.0.3"
 import pandas as pd 
 from Bio import AlignIO
 from Bio import SeqIO
-from Bio.Seq import Seq
-from Bio.SeqRecord import SeqRecord
-import numpy as np
 import os 
 import pickle
 import argparse
@@ -386,10 +383,10 @@ def create_new_table(samples_dir, new_hash_table_name, save_table, kmer_size):
     Create a new hash table, populate it with data from samples, and optionally save it to a file.
 
     Args:
-        table_size (int): The size of the hash table to be created.
         samples_dir (str): The directory containing sample data to be hashed.
         new_hash_table_name (str): The name to be used when saving the hash table.
         save_table (bool): A flag indicating whether to save the hash table to a file.
+        kmer_size (int): The size of the k-mers to be used in the analysis.
 
     Returns:
         FullHashTable: The populated hash table.
@@ -405,7 +402,6 @@ def create_new_table(samples_dir, new_hash_table_name, save_table, kmer_size):
 def main(argv=None): 
     #parse command line arguments
     parser = argparse.ArgumentParser(description='Hash table and kmer-ization implementation for HCV clustering')
-    parser.add_argument('--table_size', type=int, default=500000, help='Size of the hash table to initialize with')
     parser.add_argument('--mode', type=str, choices=['initialize', 'update', 'load'], required=True, help='Mode to perform: initialize, update, or load')
     parser.add_argument('--samples_dir_to_add', type=str, help='Directory of samples to add to the hash table')
     parser.add_argument('--samples_dir_to_compare', type=str, help='Directory of samples to compare to the hash table')
