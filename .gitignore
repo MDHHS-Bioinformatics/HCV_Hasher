@@ -1,6 +1,6 @@
-*test*
 bash_scripts/*
-results*
+/results*
 python_notebooks/*
-*.csv
+/*.csv
 __pycache__/
+*.pkl
