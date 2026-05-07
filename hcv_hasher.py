@@ -3,7 +3,7 @@
 # hcv_hasher.py
 # A script to implement a hash table for storing k-mer information sample IDs
 
-__version__ = "1.0.3"
+__version__ = "2.0.0"
 
 import pandas as pd 
 from Bio import AlignIO
