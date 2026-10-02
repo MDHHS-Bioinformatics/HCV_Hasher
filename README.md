@@ -146,3 +146,32 @@ Therefore, the theoretical minimum k-mer size of 7 should be chosen for HCV to e
 Further evaluation of the k-mer size was performed by dropping the k-mer size in increments of five: 25, 20, 15, 10, and the theoretical minimum size of 7. Adjusting k-mer sizes in this range changes the distributions of percent similarities when looking across the three main distributions of  within-sample, same-genotype, and different-genotype. Dropping the k-mer size in this range shifts the distributions upwards (higher percent similarity). The possible linkages don't actually change as distributions shift. The thresholds for what should be considered a linkage must be adjusted as the k-mer size changes.
 
 For now, our testing leans towards using a k-mer size of 10 for optimal linkage analysis. At k=10, the percentage of unique 10-mers that occur only once (per sample across all haplotypes) is >99%, and that less than <1% of 10-mers occur more than once. 
+
+## 👥 Credits
+
+HCV Hasher was built and is maintained by the Genomic Analysis Unit at the Michigan Department of Health & Human Services (MDHHS) Bureau of Laboratories. This pipeline was [Douglas Maldonado-Torres](https://github.com/MTDouglas).
+
+Additional conceptual guidance and scientific input were provided by [Arianna Miles-Jay](https://github.com/amilesj) and [Heather Blankenship](https://github.com/HeatherBlankenship).
+
+See [`CONTRIBUTORS.md`](CONTRIBUTORS.md) for a full list of contributors and their roles.
+
+## 🤝 Contributions
+Contributions, issues, and pull requests are welcome! If you would like to contribute to this pipeline, please see the [`Contribution guidelines`](CONTRIBUTING.md). 
+
+## 📚 Citations
+
+If you use CorGe+ for your analysis, please cite:
+
+Maldonado-Torres D, Blankenship H & Miles-Jay A (2026). 
+MDHHS-Bioinformatics/HCV Hasher(Version 2.0.0). 
+
+## ⚠️ Disclaimer
+This repository is not a source of government records but is intended to increase collaboration and collaborative potential on public health related projects. Materials and information in this repository are intended to share information and collaboratively develop analysis workflows. 
+
+The workflows and pipelines reflect the current understanding of the software and biological questions being answered and may be updated as needed and pursuant to further analysis and review. No warranty, expressed or implied, is made by MDHHS Bureau of Laboratories as to the functionality of the software and related material nor shall the fact of release constitute any such warranty. Furthermore, the software is released on condition that the MDHHS Bureau of Laboratories shall not be held liable for any damages resulting from its authorized or unauthorized use. 
+
+## 🔒 Privacy Notice
+Use of this service is limited only to non-sensitive and publicly available data. Users must not use, share, or store any kind of sensitive data like health status, provision or payment of healthcare, Personally Identifiable Information (PII) and/or Protected Health Information (PHI), etc. under any circumstance.
+
+## 📜 License
+This project is released under the [**MIT License**](LICENSE).
