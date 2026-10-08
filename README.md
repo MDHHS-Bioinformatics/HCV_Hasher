@@ -149,7 +149,7 @@ For now, our testing leans towards using a k-mer size of 10 for optimal linkage 
 
 ## 👥 Credits
 
-HCV Hasher was built and is maintained by the Genomic Analysis Unit at the Michigan Department of Health & Human Services (MDHHS) Bureau of Laboratories. This pipeline was [Douglas Maldonado-Torres](https://github.com/MTDouglas).
+HCV Hasher was built and is maintained by the Genomic Analysis Unit at the Michigan Department of Health & Human Services (MDHHS) Bureau of Laboratories. This pipeline was developed by [Douglas Maldonado-Torres](https://github.com/MTDouglas).
 
 Additional conceptual guidance and scientific input were provided by [Arianna Miles-Jay](https://github.com/amilesj) and [Heather Blankenship](https://github.com/HeatherBlankenship).
 
@@ -160,7 +160,7 @@ Contributions, issues, and pull requests are welcome! If you would like to contr
 
 ## 📚 Citations
 
-If you use CorGe+ for your analysis, please cite:
+If you use HCV Hasher for your analysis, please cite:
 
 Maldonado-Torres D, Blankenship H & Miles-Jay A (2026). 
 MDHHS-Bioinformatics/HCV Hasher(Version 2.0.0). 
